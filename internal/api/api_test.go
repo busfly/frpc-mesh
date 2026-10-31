@@ -294,3 +294,92 @@ func TestCheckPortUDP(t *testing.T) {
 		t.Error("udp 请求不应发起 TCP 探测")
 	}
 }
+
+// ---------- 任务 5：代理保存服务端兜底查重 ----------
+
+func createProxyVia(t *testing.T, h http.Handler, instanceID int64, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return doJSON(t, h, "POST", fmt.Sprintf("/api/instances/%d/proxies", instanceID), body)
+}
+
+func errText(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var m map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("解析响应失败: %s", rec.Body.String())
+	}
+	return m["error"]
+}
+
+func TestCreateProxyRemotePortConflict(t *testing.T) {
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "服务器A", "127.0.0.9", 7000, "")
+	b := mustInstance(t, st, "服务器B", "127.0.0.9", 7000, "") // 同一 FRPS 服务器
+	c := mustInstance(t, st, "服务器C", "127.0.0.8", 7000, "") // 另一台 FRPS
+
+	rec := createProxyVia(t, h, a.ID, `{"name":"ssh","kind":"proxy","type":"tcp","local_port":22,"remote_port":8080}`)
+	if rec.Code != 201 {
+		t.Fatalf("首条 tcp 8080 应创建成功，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	// 同服务器重复远程端口 → 400，文案带占用者代理名
+	rec = createProxyVia(t, h, b.ID, `{"name":"backup","kind":"proxy","type":"tcp","local_port":22,"remote_port":8080}`)
+	if rec.Code != 400 {
+		t.Fatalf("重复远程端口应 400，实际 %d", rec.Code)
+	}
+	if got := errText(t, rec); got != "远程端口 8080 已被代理「ssh」占用" {
+		t.Errorf("冲突文案不符: %q", got)
+	}
+	// 别的 FRPS 服务器不算冲突
+	rec = createProxyVia(t, h, c.ID, `{"name":"ssh-c","kind":"proxy","type":"tcp","local_port":22,"remote_port":8080}`)
+	if rec.Code != 201 {
+		t.Errorf("不同 FRPS 服务器应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	// udp 与 tcp 端口空间互不冲突
+	rec = createProxyVia(t, h, a.ID, `{"name":"dns","kind":"proxy","type":"udp","local_port":53,"remote_port":8080}`)
+	if rec.Code != 201 {
+		t.Errorf("udp 8080 不受 tcp 8080 影响，应放行，实际 %d", rec.Code)
+	}
+	// http 类型不参与查重
+	rec = createProxyVia(t, h, a.ID, `{"name":"web","kind":"proxy","type":"http","local_port":80,"remote_port":8080}`)
+	if rec.Code != 201 {
+		t.Errorf("http 类型不参与查重，应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	// 禁用代理不算冲突
+	rec = createProxyVia(t, h, a.ID, `{"name":"off","kind":"proxy","type":"tcp","local_port":9090,"remote_port":9090,"enabled":false}`)
+	if rec.Code != 201 {
+		t.Fatalf("禁用代理应创建成功，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = createProxyVia(t, h, a.ID, `{"name":"on","kind":"proxy","type":"tcp","local_port":9090,"remote_port":9090}`)
+	if rec.Code != 201 {
+		t.Errorf("同端口仅有禁用代理时应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateProxyExcludesSelf(t *testing.T) {
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.9", 7000, "")
+	px := mustProxy(t, st, a.ID, "me", "tcp", 8080, true)
+	// 直接落库另一条同端口启用代理：模拟“别的代理占着 8080”
+	mustProxy(t, st, a.ID, "rival", "tcp", 8080, true)
+
+	body8080 := `{"name":"me","kind":"proxy","type":"tcp","local_port":22,"remote_port":8080,"enabled":true}`
+	rec := doJSON(t, h, "PUT", fmt.Sprintf("/api/proxies/%d", px.ID), body8080)
+	if rec.Code != 400 {
+		t.Fatalf("端口被他人占用时更新应 400，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := errText(t, rec); got != "远程端口 8080 已被代理「rival」占用" {
+		t.Errorf("冲突文案应指向 rival，实际 %q", got)
+	}
+	// 改到空闲端口 8081 → 放行；此时该端口唯一持有者是自身
+	rec = doJSON(t, h, "PUT", fmt.Sprintf("/api/proxies/%d", px.ID),
+		`{"name":"me","kind":"proxy","type":"tcp","local_port":22,"remote_port":8081,"enabled":true}`)
+	if rec.Code != 200 {
+		t.Fatalf("改到空闲端口应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	// 再次原值提交 8081：查重必须排除自身 id，不应自撞
+	rec = doJSON(t, h, "PUT", fmt.Sprintf("/api/proxies/%d", px.ID),
+		`{"name":"me","kind":"proxy","type":"tcp","local_port":22,"remote_port":8081,"enabled":true}`)
+	if rec.Code != 200 {
+		t.Fatalf("排除自身后重复提交应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+}

@@ -642,6 +642,28 @@ func (s *Server) validateProxy(p *model.Proxy) string {
 	return ""
 }
 
+// remotePortConflict 保存兜底查重（设计 §3.2）：与 check-port 的本机口径一致——
+// 同 FRPS 服务器（addr+port 相同）、启用、同协议 tcp/udp、同远程端口、排除自身；不做网络探测
+func (s *Server) remotePortConflict(p *model.Proxy) string {
+	if (p.Type != "tcp" && p.Type != "udp") || p.RemotePort <= 0 {
+		return ""
+	}
+	in, err := s.Store.GetInstance(p.InstanceID)
+	if err != nil {
+		return ""
+	}
+	holders, err := s.findRemotePortHolders(in, p.Type, p.RemotePort)
+	if err != nil {
+		return ""
+	}
+	for _, h := range holders {
+		if h.ProxyID != p.ID {
+			return fmt.Sprintf("远程端口 %d 已被代理「%s」占用", p.RemotePort, h.ProxyName)
+		}
+	}
+	return ""
+}
+
 func (s *Server) handleCreateProxy(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
@@ -675,6 +697,10 @@ func (s *Server) handleCreateProxy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, msg)
 		return
 	}
+	if msg := s.remotePortConflict(&p); msg != "" {
+		writeErr(w, 400, msg)
+		return
+	}
 	if err := s.Store.CreateProxy(&p); err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -702,6 +728,10 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	p.ID = pid
 	p.InstanceID = old.InstanceID
 	if msg := s.validateProxy(&p); msg != "" {
+		writeErr(w, 400, msg)
+		return
+	}
+	if msg := s.remotePortConflict(&p); msg != "" {
 		writeErr(w, 400, msg)
 		return
 	}
