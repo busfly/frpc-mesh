@@ -70,7 +70,7 @@
 **frpc 版本管理** — 在线拉取 Releases、下载并一键切换
 <img src="docs/screenshots/versions.png" width="900" alt="frpc 版本管理">
 
-**设置** — frpc 生效版本、开机自启、备份导出导入、修改密码
+**设置** — frpc 生效版本、开机自启、frpc-mesh 版本检查与一键升级、备份导出导入、修改密码
 <img src="docs/screenshots/settings.png" width="900" alt="设置">
 
 </details>

@@ -72,7 +72,7 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 **frpc versions** — fetch Releases, download, switch
 <img src="docs/screenshots/versions.png" width="900" alt="frpc version management">
 
-**Settings** — active frpc version, start-on-boot, backup export/import, change password
+**Settings** — active frpc version, start-on-boot, frpc-mesh version check & one-click upgrade, backup export/import, change password
 <img src="docs/screenshots/settings.png" width="900" alt="Settings">
 
 </details>
