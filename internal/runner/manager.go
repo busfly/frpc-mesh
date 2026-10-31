@@ -110,6 +110,8 @@ type Manager struct {
 	// downloadFailed 记录本进程内补下载已失败的 pin 版本：自动 reconcile 不再反复重试，
 	// 用户重新保存该服务器时清除标记（显式动作即重试意图）
 	downloadFailed map[string]struct{}
+	// watched 记录已挂 watcher 的版本，避免同版本多个 watcher 重复重启
+	watched map[string]struct{}
 	// downloadFunc / restartFunc / watchPoll 为可注入项，单测替换以隔离真实网络与进程（同 update 包 execFunc 套路）
 	downloadFunc func(version, source string) error
 	restartFunc  func(id int64) error
@@ -121,7 +123,8 @@ type Manager struct {
 func NewManager(st *store.Store, dataDir string) *Manager {
 	m := &Manager{
 		procs: map[int64]*proc{}, jobs: map[string]*downloadJob{}, remoteCache: map[string]remoteCacheEntry{},
-		fails: map[int64]int{}, downloadFailed: map[string]struct{}{}, store: st, dataDir: dataDir,
+		fails: map[int64]int{}, downloadFailed: map[string]struct{}{}, watched: map[string]struct{}{},
+		store: st, dataDir: dataDir,
 		watchPoll: 2 * time.Second,
 	}
 	m.downloadFunc = m.StartDownload
@@ -577,17 +580,41 @@ func (m *Manager) ReconcilePinnedVersions() {
 		if failed {
 			continue
 		}
+		// 下载可能由用户在版本管理页手动发起：那种情况也要挂 watcher，完成后才能自动切换
 		if st, _ := m.DownloadStatus(pin); st == "downloading" {
+			m.watchPin(pin)
 			continue
 		}
 		if err := m.downloadFunc(pin, "github"); err != nil {
-			m.mu.Lock()
-			m.downloadFailed[pin] = struct{}{}
-			m.mu.Unlock()
+			// 「正在下载中」是并发触发的正常竞态，不算失败
+			if !strings.Contains(err.Error(), "正在下载中") {
+				m.mu.Lock()
+				m.downloadFailed[pin] = struct{}{}
+				m.mu.Unlock()
+			}
 			continue
 		}
-		go m.watchPinnedDownload(pin)
+		m.watchPin(pin)
 	}
+}
+
+// watchPin 为某版本挂一个补下载 watcher，同版本只挂一个
+func (m *Manager) watchPin(version string) {
+	m.mu.Lock()
+	if _, ok := m.watched[version]; ok {
+		m.mu.Unlock()
+		return
+	}
+	m.watched[version] = struct{}{}
+	m.mu.Unlock()
+	go func() {
+		defer func() {
+			m.mu.Lock()
+			delete(m.watched, version)
+			m.mu.Unlock()
+		}()
+		m.watchPinnedDownload(version)
+	}()
 }
 
 // watchPinnedDownload 轮询补下载任务至终态；不碰真实下载逻辑，便于单测注入

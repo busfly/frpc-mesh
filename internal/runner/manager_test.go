@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -299,6 +300,38 @@ func TestReconcileFailureNoRestartNoRetry(t *testing.T) {
 	m.ReconcilePinnedVersions()
 	if len(calls) != 1 {
 		t.Errorf("失败后不应重试下载，实际 %v", calls)
+	}
+}
+
+// 下载由别处发起（如版本管理页手动下载）时，reconcile 也要挂 watcher，完成后自动切换
+func TestReconcileWatchesExternallyStartedDownload(t *testing.T) {
+	m, st := newTestManager(t)
+	m.watchPoll = 10 * time.Millisecond
+	// 永不真正下载：注入的 downloadFunc 一旦调用就失败，测试靠预先存在的 downloading 任务
+	m.downloadFunc = func(version, source string) error {
+		t.Errorf("已有下载在途时不应重复发起下载")
+		return errors.New("不该被调用")
+	}
+	log := &restartLog{}
+	m.restartFunc = log.fn
+
+	in := newEnabledInstance(t, st, "机A", "0.66.0")
+	markFakeRunning(t, m, in.ID)
+	m.mu.Lock()
+	job := &downloadJob{status: "downloading"}
+	m.jobs["0.66.0"] = job
+	m.mu.Unlock()
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+		job.mu.Lock()
+		job.status = "done"
+		job.mu.Unlock()
+	}()
+
+	m.ReconcilePinnedVersions()
+	waitUntil(t, func() bool { return len(log.snapshot()) > 0 })
+	if got := log.snapshot(); len(got) != 1 || got[0] != in.ID {
+		t.Errorf("应在下载完成后重启该实例一次，实际 %v", got)
 	}
 }
 

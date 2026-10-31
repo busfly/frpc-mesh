@@ -96,6 +96,8 @@ func newTestServer(t *testing.T) (*Server, *store.Store, *runner.Manager, http.H
 	s := &Server{Store: st, Mgr: mgr}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/proxies/check-port", s.handleCheckPort)
+	mux.HandleFunc("POST /api/instances", s.handleCreateInstance)
+	mux.HandleFunc("PUT /api/proxies/{pid}/enabled", s.handleSetProxyEnabled)
 	mux.HandleFunc("POST /api/instances/{id}/proxies", s.handleCreateProxy)
 	mux.HandleFunc("PUT /api/proxies/{pid}", s.handleUpdateProxy)
 	t.Cleanup(func() {
@@ -381,5 +383,52 @@ func TestUpdateProxyExcludesSelf(t *testing.T) {
 		`{"name":"me","kind":"proxy","type":"tcp","local_port":22,"remote_port":8081,"enabled":true}`)
 	if rec.Code != 200 {
 		t.Fatalf("排除自身后重复提交应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// 禁用代理不写入 frpc 配置，保存时不该被端口查重拦住
+func TestDisabledProxySkipsPortConflict(t *testing.T) {
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.9", 7000, "")
+	mustProxy(t, st, a.ID, "live", "tcp", 8080, true)
+	rec := createProxyVia(t, h, a.ID, `{"name":"standby","kind":"proxy","type":"tcp","local_port":22,"remote_port":8080,"enabled":false}`)
+	if rec.Code != 201 {
+		t.Fatalf("禁用代理应放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// 启用开关把代理推给 frps，端口已被占用时必须拦住启用
+func TestEnableProxyRejectsTakenPort(t *testing.T) {
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.9", 7000, "")
+	standby := mustProxy(t, st, a.ID, "standby", "tcp", 9090, false)
+	mustProxy(t, st, a.ID, "live", "tcp", 9090, true)
+	rec := doJSON(t, h, "PUT", fmt.Sprintf("/api/proxies/%d/enabled", standby.ID), `{"enabled":true}`)
+	if rec.Code != 400 {
+		t.Fatalf("端口被占用时启用应 400，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := errText(t, rec); got != "远程端口 9090 已被代理「live」占用" {
+		t.Errorf("启用拦截文案不符: %q", got)
+	}
+	if cur, _ := st.GetProxy(standby.ID); cur.Enabled {
+		t.Error("被拦下后代理不应被置为启用")
+	}
+	// 停用永远放行
+	if rec := doJSON(t, h, "PUT", fmt.Sprintf("/api/proxies/%d/enabled", standby.ID), `{"enabled":false}`); rec.Code != 200 {
+		t.Errorf("停用应放行，实际 %d", rec.Code)
+	}
+}
+
+// 指定版本必须是 x.y.z，避免脏值进库
+func TestInstanceRejectsBadFrpcVersion(t *testing.T) {
+	_, _, _, h := newTestServer(t)
+	for _, bad := range []string{"1.2", "v0.61.1", "0.61.1-beta", "abc"} {
+		body := fmt.Sprintf(`{"name":"n-%s","server_addr":"1.2.3.4","server_port":7000,"frpc_version":%q}`, bad, bad)
+		if rec := doJSON(t, h, "POST", "/api/instances", body); rec.Code != 400 {
+			t.Errorf("版本 %q 应 400，实际 %d: %s", bad, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := doJSON(t, h, "POST", "/api/instances", `{"name":"ok","server_addr":"1.2.3.4","server_port":7000,"frpc_version":"0.61.1"}`); rec.Code != 201 {
+		t.Errorf("合法版本应创建成功，实际 %d: %s", rec.Code, rec.Body.String())
 	}
 }

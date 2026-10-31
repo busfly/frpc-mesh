@@ -215,13 +215,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	online := 0
 	proxiesOnline := 0
 	type brief struct {
-		ID           int64  `json:"id"`
-		Name         string `json:"name"`
-		Status       string `json:"status"`
-		Enabled      bool   `json:"enabled"`
-		ServerAddr   string `json:"server_addr"`
-		ServerPort   int    `json:"server_port"`
-		ProxiesTotal int    `json:"proxies_total"`
+		ID            int64  `json:"id"`
+		Name          string `json:"name"`
+		Status        string `json:"status"`
+		Enabled       bool   `json:"enabled"`
+		ServerAddr    string `json:"server_addr"`
+		ServerPort    int    `json:"server_port"`
+		ProxiesTotal  int    `json:"proxies_total"`
 		ProxiesOnline int    `json:"proxies_online"`
 	}
 	briefs := []brief{}
@@ -374,6 +374,9 @@ func (s *Server) validateInstance(in *model.Instance) string {
 	}
 	if in.ServerPort <= 0 || in.ServerPort > 65535 {
 		return "服务器端口需在 1-65535 之间"
+	}
+	if in.FrpcVersion != "" && !runner.ValidVersion(in.FrpcVersion) {
+		return "frpc 版本需为 x.y.z 形式"
 	}
 	if in.AdminCfg.Enabled {
 		if in.AdminCfg.Port <= 0 || in.AdminCfg.Port > 65535 {
@@ -647,7 +650,8 @@ func (s *Server) validateProxy(p *model.Proxy) string {
 // remotePortConflict 保存兜底查重（设计 §3.2）：与 check-port 的本机口径一致——
 // 同 FRPS 服务器（addr+port 相同）、启用、同协议 tcp/udp、同远程端口、排除自身；不做网络探测
 func (s *Server) remotePortConflict(p *model.Proxy) string {
-	if (p.Type != "tcp" && p.Type != "udp") || p.RemotePort <= 0 {
+	// 禁用的代理不写入 frpc 配置、也不占用服务端端口，不该被拦
+	if (p.Type != "tcp" && p.Type != "udp") || p.RemotePort <= 0 || !p.Enabled {
 		return ""
 	}
 	in, err := s.Store.GetInstance(p.InstanceID)
@@ -763,6 +767,14 @@ func (s *Server) handleSetProxyEnabled(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, 404, "代理不存在")
 		return
+	}
+	if body.Enabled {
+		// 启用会把代理推给 frps，端口冲突要在这里拦住，否则隧道必然起不来
+		old.Enabled = true
+		if msg := s.remotePortConflict(old); msg != "" {
+			writeErr(w, 400, msg)
+			return
+		}
 	}
 	if err := s.Store.SetProxyEnabled(pid, body.Enabled); err != nil {
 		writeErr(w, 500, err.Error())
