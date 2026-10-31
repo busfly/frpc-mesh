@@ -8,6 +8,8 @@ import type {
   Proxy,
   ProxyPingResult,
   Settings,
+  UpdateStatus,
+  UpgradeJob,
   VersionsLocalResponse,
   VersionsResponse
 } from './types'
@@ -93,8 +95,11 @@ export const apiDeleteProxy = (pid: number) =>
 // 设置
 export const apiGetSettings = () => http.get<Settings>('/settings').then((r) => r.data)
 
-export const apiSaveSettings = (data: { auto_start: boolean }) =>
-  http.put<Settings>('/settings', data).then((r) => r.data)
+// 后端逐字段合并：未提交的开关保持原值
+export const apiSaveSettings = (data: {
+  auto_start?: boolean
+  auto_update_check?: boolean
+}) => http.put<Settings>('/settings', data).then((r) => r.data)
 
 // 本地地址快捷提示（宿主机网关 / 本机 IP）
 export const getNetHints = () =>
@@ -143,3 +148,25 @@ export const activateVersion = (version: string) =>
 
 export const deleteVersion = (version: string) =>
   http.delete<{ ok: boolean }>(`/frpc/versions/${version}`).then((r) => r.data)
+
+// 新版本检测与一键升级
+// 读回本地已知的检查结果（含环境可升级性），秒回不访问网络
+export const getUpdateStatus = () =>
+  http.get<UpdateStatus>('/update/status', { silent: true } as any).then((r) => r.data)
+
+// 强制联网检查：后端直连失败会再试镜像，耗时较长，超时放宽
+export const checkUpdate = (source: 'github' | 'ghfast') =>
+  http
+    .post<UpdateStatus>('/update/check', null, {
+      params: { source },
+      silent: true,
+      timeout: 60000
+    } as any)
+    .then((r) => r.data)
+
+// 一键升级：仅非容器环境可用；返回后台任务初始状态，需轮询
+export const startUpgrade = (version: string) =>
+  http.post<UpgradeJob>('/update/upgrade', { version }).then((r) => r.data)
+
+export const getUpgradeStatus = () =>
+  http.get<UpgradeJob>('/update/upgrade/status', { silent: true } as any).then((r) => r.data)

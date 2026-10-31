@@ -18,6 +18,7 @@ import (
 	"frpc-mesh/internal/netinfo"
 	"frpc-mesh/internal/runner"
 	"frpc-mesh/internal/store"
+	"frpc-mesh/internal/update"
 )
 
 type Server struct {
@@ -25,6 +26,8 @@ type Server struct {
 	Mgr     *runner.Manager
 	Auth    *auth.Service
 	Login   *auth.Limiter
+	Update  *update.Checker
+	Upgrade *update.Upgrader
 	Version string
 	WebFS   fs.FS // 前端静态资源根（已含 index.html）
 }
@@ -95,6 +98,10 @@ func (s *Server) Routes() http.Handler {
 	protected.HandleFunc("GET /api/frpc/versions/download/status", s.handleDownloadStatus)
 	protected.HandleFunc("POST /api/frpc/versions/activate", s.handleActivateVersion)
 	protected.HandleFunc("DELETE /api/frpc/versions/{version}", s.handleDeleteVersion)
+	protected.HandleFunc("GET /api/update/status", s.handleUpdateStatus)
+	protected.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
+	protected.HandleFunc("POST /api/update/upgrade", s.handleUpgradeStart)
+	protected.HandleFunc("GET /api/update/upgrade/status", s.handleUpgradeStatus)
 	mux.Handle("/api/", s.Auth.Middleware(protected))
 
 	mux.HandleFunc("/", s.spaHandler())
@@ -753,18 +760,81 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, st)
 }
 
+// settingsPayload 用 *bool 承接，请求未带的开关保持原值
+type settingsPayload struct {
+	AutoStart       *bool `json:"auto_start"`
+	AutoUpdateCheck *bool `json:"auto_update_check"`
+}
+
+func mergeSettings(cur model.Settings, p settingsPayload) model.Settings {
+	if p.AutoStart != nil {
+		cur.AutoStart = *p.AutoStart
+	}
+	if p.AutoUpdateCheck != nil {
+		cur.AutoUpdateCheck = *p.AutoUpdateCheck
+	}
+	return cur
+}
+
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
-	var st model.Settings
-	if err := readJSON(r, &st); err != nil {
+	var payload settingsPayload
+	if err := readJSON(r, &payload); err != nil {
 		writeErr(w, 400, "请求格式错误")
 		return
 	}
+	st := mergeSettings(s.Store.GetSettings(), payload)
 	if err := s.Store.SaveSettings(st); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	st.Version = s.Version
 	writeJSON(w, 200, st)
+}
+
+// ---------- 新版本检测与一键升级 ----------
+
+// updateResponse 汇总检测结果、环境可升级性与最近一次升级任务，供前端一次取全
+func (s *Server) updateResponse(inf *update.Info) map[string]any {
+	if inf.Assets == nil {
+		inf.Assets = []update.Asset{}
+	}
+	return map[string]any{
+		"info":         inf,
+		"upgrade":      s.Upgrade.CapabilityFor(inf.Latest, inf.Assets),
+		"upgrade_job":  s.Upgrade.Status(),
+		"last_upgrade": s.Update.LastUpgrade(),
+	}
+}
+
+func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.updateResponse(s.Update.Status()))
+}
+
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	source := "github"
+	if r.URL.Query().Get("source") == "ghfast" {
+		source = "ghfast"
+	}
+	writeJSON(w, 200, s.updateResponse(s.Update.Result(source)))
+}
+
+func (s *Server) handleUpgradeStart(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Version string `json:"version"`
+	}
+	if err := readJSON(r, &payload); err != nil {
+		writeErr(w, 400, "请求格式错误")
+		return
+	}
+	if err := s.Upgrade.Start(strings.TrimSpace(payload.Version)); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, s.Upgrade.Status())
+}
+
+func (s *Server) handleUpgradeStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.Upgrade.Status())
 }
 
 func (s *Server) handleNetHints(w http.ResponseWriter, r *http.Request) {

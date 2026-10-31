@@ -76,8 +76,9 @@ type Proxy struct {
 }
 
 type Settings struct {
-	AutoStart bool   `json:"auto_start"`
-	Version   string `json:"version,omitempty"`
+	AutoStart       bool   `json:"auto_start"`
+	AutoUpdateCheck bool   `json:"auto_update_check"`
+	Version         string `json:"version,omitempty"`
 }
 
 

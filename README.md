@@ -24,6 +24,7 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 - **Honest online status** — a tunnel counts as online only when frpc's log confirms it *and* the local target answers a data-layer probe; "Ping all" measures every tunnel in parallel
 - Advanced transport knobs (protocol, tcpMux, pool count, heartbeat, dial timeout, TLS, STUN) shipped with defaults chosen from real-world stability testing
 - **frpc version management** — browse upstream GitHub Releases (official source + a mirror source), download a version, switch to it, running frpc processes restart on the new binary
+- **Self-update** — checks frpc-mesh's own latest GitHub Release (official or mirror, optionally on a schedule) and reminds you in the header; when running as a plain binary it can upgrade in place (sha256 verified, new binary self-checked, `.bak` kept for rollback, tunnels drop for a few seconds then recover), while a container deployment is pointed at reloading the image instead
 - Config backup — export / import one JSON file (servers + proxies; importing overwrites)
 - JWT login with tiered lockout after repeated failures; state re-reads itself after every write
 - Single static binary — the built frontend is embedded, state lives in SQLite, no external dependencies

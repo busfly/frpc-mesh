@@ -103,7 +103,57 @@ export interface Dashboard {
 
 export interface Settings {
   auto_start: boolean
+  auto_update_check: boolean
   version: string
+}
+
+/** 新版本检测：frpc-mesh 自身相对 GitHub Releases 的状态 */
+export interface UpdateAsset {
+  name: string
+  size_bytes: number
+  url: string
+}
+
+export interface UpdateInfo {
+  current: string
+  latest: string
+  has_update: boolean
+  release_name: string
+  release_url: string
+  published_at: string
+  notes: string
+  assets: UpdateAsset[]
+  /** 上次检查时间（RFC3339）；空表示从未检查过 */
+  checked_at: string
+  /** github | ghfast */
+  source: string
+  error?: string
+  auto_check: boolean
+}
+
+/** 当前运行环境能否一键升级：容器内只提示，二进制可就地替换 */
+export interface UpgradeCapability {
+  can_upgrade: boolean
+  mode: 'binary' | 'container' | 'unsupported'
+  reason: string
+  asset_name: string
+  binary_path?: string
+  has_checksum: boolean
+}
+
+/** 升级任务状态：idle | downloading | verifying | swapping | restarting | error */
+export interface UpgradeJob {
+  state: string
+  message: string
+  from: string
+  to: string
+}
+
+export interface UpdateStatus {
+  info: UpdateInfo
+  upgrade: UpgradeCapability
+  upgrade_job: UpgradeJob
+  last_upgrade: string
 }
 
 /** GET /settings/net-hints：后端探测的本地地址快捷提示 */

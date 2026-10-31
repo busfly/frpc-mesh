@@ -3,7 +3,8 @@
 GO        ?= go
 VERSION   ?= 1.0.0
 PLATFORMS = linux-arm64 linux-amd64 darwin-arm64
-LDFLAGS   = -trimpath -ldflags "-s -w"
+# 版本号注入二进制：--version 自检与网页端「当前版本」都取这个值
+LDFLAGS   = -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
 # 随包 frpc 底座（按版本号分目录，三平台共用 pack-base/start.sh）
 FRPC_BASE ?= pack-base/frpc-0.71.1
 
@@ -41,4 +42,7 @@ release:
 	done
 	@rm -rf dist/.stage
 	docker save frpc-mesh:latest | gzip > dist/frpc-mesh-v$(VERSION)-docker-linux-arm64.tar.gz
+	@cd dist && { sha256sum frpc-mesh-v$(VERSION)-*.tar.gz 2>/dev/null || shasum -a 256 frpc-mesh-v$(VERSION)-*.tar.gz; } > sha256sums.txt
+	@echo '--- sha256sums.txt（一键升级依赖此文件，须与安装包一起上传 Release）---'
+	@cat dist/sha256sums.txt
 	@ls -lh dist/*.tar.gz

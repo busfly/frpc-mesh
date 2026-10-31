@@ -52,10 +52,20 @@ docker compose start
 
 ## 4. 升级
 
+### 4.1 frpc-mesh 本体（Web「设置 → 检查新版本」）
+- 数据源选 GitHub 官方或 ghfast 镜像，直连失败会自动再试镜像；结果写入数据库，重启后仍显示上次检查时间与版本
+- 「定时检查 frpc-mesh 新版本」开关只负责每 6 小时联网查一次并提醒，**不会自动下载或替换**；页面顶栏出现「发现新版本 vX.Y.Z」即为有更新
+- **二进制运行（NAS/软路由 `./start.sh`）**：环境标签为「二进制运行」时可点「升级到 vX.Y.Z」——下载 → 按 Release 的 `sha256sums.txt` 校验 → 新二进制 `--version` 自检 → 替换 → 自重启。期间**所有隧道中断数秒**后自动恢复（重启后即使 `auto_start` 关闭也会拉起已启用的服务器）。旧二进制保留为 `frpc-mesh.bak`，出问题可停进程后 `mv frpc-mesh.bak frpc-mesh` 回滚
+- **容器运行**：环境标签为「容器运行」，页面不提供就地升级（容器内替换的二进制会在镜像重建时丢失）。改用新镜像包：`docker load < frpc-mesh-vX.Y.Z-docker-linux-arm64.tar.gz` → 把 compose 的 `image` 改成新标签 → `docker compose up -d`（数据目录不变，配置不丢）
+- 拒绝自动升级的几种情况（只做提示，需手动下载包替换）：Release 缺 `sha256sums.txt`、当前平台没有对应安装包、二进制不可写、容器环境
+- 手动升级普通包：停旧进程 → 解压新包覆盖同目录（`frpc-mesh`/`docs/` 等）→ 用原命令启动；数据目录不动
 - Compose 源码部署：`git pull && docker compose up -d --build`（数据库自动迁移，配置不丢）
-- 镜像包部署：load 新镜像 → 用新镜像名/标签重建容器（数据目录不变）
-- 普通包：停旧进程 → 替换二进制 → 启动（数据目录不动）
-- frpc 二进制版本：Web「frpc 版本管理」在线下载/切换（运行中服务器自动重启生效）；离线环境把 frpc 放 `data/versions/frpc-<版本号>`（可执行权限）并在页面激活，或放程序目录 `./frpc`
+- 校验手动下载的包：`shasum -a 256 -c sha256sums.txt`（与包同名文件同目录执行）
+- 版本号来自构建注入（`make VERSION=x.y.z release`），`./frpc-mesh --version` 可查看
+
+### 4.2 frpc 底座版本
+Web「frpc 版本管理」在线下载/切换（运行中服务器自动重启生效）；离线环境把 frpc 放 `data/versions/frpc-<版本号>`（可执行权限）并在页面激活，或放程序目录 `./frpc`
+
 - 前端有改动时部署后浏览器需强刷（Mac: Cmd+Shift+R），否则看到的是旧页面
 
 ## 5. 安全边界
