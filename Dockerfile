@@ -11,11 +11,13 @@ RUN pnpm build
 FROM golang:1.23-alpine AS builder
 ENV GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0
 WORKDIR /src
+# VERSION 决定容器内 frpc-mesh 自报版本，供「检查新版本」与自升级判定使用
+ARG VERSION=1.0.0
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/dist ./web/dist
-RUN go build -trimpath -ldflags "-s -w" -o /out/frpc-mesh .
+RUN go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o /out/frpc-mesh .
 
 # ---------- 运行时 ----------
 FROM alpine:3.20
