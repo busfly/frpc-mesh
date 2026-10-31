@@ -185,7 +185,8 @@ visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors
 }
 ```
 `can_upgrade` 判定顺序：无 latest / 容器内 / 当前平台无安装包 / 缺 `sha256sums.txt` / 二进制不可写 → 一律拒绝并给出 `reason`（宁可不升，也不替换成未经校验的文件）。
-升级流程：下载 → sha256 比对 → 解包出 `frpc-mesh` 并跑 `--version` 自检 → 旧二进制改名保留为 `.bak` → 同目录原子替换 → 优雅停掉全部 frpc 子进程 → `exec` 自身重启（环境带 `FRPC_MESH_RESUME=1`、`FRPC_MESH_UPGRADED_FROM=<旧版本>`，重启后无论 `auto_start` 与否都会拉起已启用服务器）。任一步失败都不动原二进制（替换失败会回滚），任务状态转 `error`。
+升级流程：先取 `sha256sums.txt`（拿得到才值得下载）→ 下载安装包 → sha256 比对 → 解包出 `frpc-mesh` 并跑 `--version` 自检 → 旧二进制改名保留为 `.bak` → 同目录原子替换 → 优雅停掉全部 frpc 子进程 → `exec` 自身重启（环境带 `FRPC_MESH_RESUME=1`、`FRPC_MESH_UPGRADED_FROM=<旧版本>`，重启后无论 `auto_start` 与否都会拉起已启用服务器）。任一步失败都不动原二进制（替换失败会回滚），任务状态转 `error`。
+下载地址跟随检查数据源：检查走过 `ghfast` 时，下载也先走镜像；默认先直连 GitHub，连不上（20 秒内无响应）才自动改走镜像，所以「检查更新」选哪个源，升级下载就走哪条路。宿主机本身需要代理才能连 GitHub 时，在启动环境里设置 `HTTPS_PROXY` 即可（走环境代理）。
 
 ## 健康检查
 - `GET /api/health` → `{"status":"ok","version":"1.0.0"}`

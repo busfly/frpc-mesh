@@ -235,7 +235,7 @@ func newUpgradeFixture(t *testing.T, body []byte, sumOverride string) *upgradeFi
 }
 
 func (f *upgradeFixture) run(from, to string) {
-	f.u.run(f.ability, f.dlURL, f.sumURL, from, to)
+	f.u.run(f.ability, f.dlURL, f.sumURL, from, to, false)
 }
 
 func TestUpgradeReplacesBinaryAndRestarts(t *testing.T) {
@@ -407,7 +407,7 @@ func TestGetRejectsDisallowedHostBeforeMirrorFallback(t *testing.T) {
 
 	// 白名单外的地址必须在发出任何请求（含拼到镜像再请求）之前被拒绝
 	for _, bad := range []string{"http://127.0.0.1:9/x.tar.gz", "https://evil.example.com/x.tar.gz"} {
-		if _, err := u.get(bad); err == nil {
+		if _, err := u.get(bad, false); err == nil {
 			t.Fatalf("%s 应被拒绝", bad)
 		}
 	}
@@ -421,6 +421,52 @@ type probeTransport struct{ seen *[]string }
 func (p *probeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	*p.seen = append(*p.seen, r.URL.String())
 	return nil, fmt.Errorf("不该发出请求")
+}
+
+// routeTransport 只放行镜像前缀下的地址（指向本地服务），其余一律失败，用来模拟直连不通
+type routeTransport struct {
+	mirror string
+	inner  http.RoundTripper
+	seen   *[]string
+}
+
+func (r *routeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	*r.seen = append(*r.seen, req.URL.String())
+	if !strings.HasPrefix(req.URL.String(), r.mirror) {
+		return nil, fmt.Errorf("直连超时")
+	}
+	return r.inner.RoundTrip(req)
+}
+
+func TestGetPrefersMirrorWhenCheckUsedMirror(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprint(w, "from-mirror")
+	}))
+	t.Cleanup(srv.Close)
+
+	const asset = "https://github.com/busfly/frpc-mesh/releases/download/v1.2.3/pkg.tar.gz"
+	prefix := srv.URL + "/mirror/"
+	get := func(mirrorFirst bool) (string, []string) {
+		var seen []string
+		u := NewUpgrader(New(newStore(t), "1.0.0"), &fakeStop{}, t.TempDir())
+		u.mirrorPrefix = prefix
+		u.hostCheck = func(string) error { return nil }
+		u.client = &http.Client{Transport: &routeTransport{mirror: prefix, inner: srv.Client().Transport, seen: &seen}}
+		body, err := u.get(asset, mirrorFirst)
+		if err != nil {
+			t.Fatalf("mirrorFirst=%v 取内容失败: %v", mirrorFirst, err)
+		}
+		return string(body), seen
+	}
+
+	// 检查走过 ghfast：下载地址也要先走镜像，不能再空等直连超时
+	if body, seen := get(true); body != "from-mirror" || len(seen) != 1 || seen[0] != prefix+asset {
+		t.Errorf("期望只请求镜像地址，实际 body=%q seen=%v", body, seen)
+	}
+	// 默认仍先直连 GitHub，失败后回退镜像
+	if body, seen := get(false); body != "from-mirror" || len(seen) != 2 || seen[0] != asset {
+		t.Errorf("期望先直连再镜像，实际 body=%q seen=%v", body, seen)
+	}
 }
 
 func TestRecordAndLastUpgrade(t *testing.T) {

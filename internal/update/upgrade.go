@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,6 +30,9 @@ const (
 	UpgradedEnv = "FRPC_MESH_UPGRADED_FROM"
 	checksums   = "sha256sums.txt"
 	wOK         = 0x2
+	// stallTimeout 是「连上了但一直不回响应」的上限：直连被墙时往往是这样干挂着，
+	// 必须在很短时间内失败，镜像回退才轮得到；下载慢但一直在传则不受它限制（整体上限见 client.Timeout）
+	stallTimeout = 20 * time.Second
 )
 
 // Stoppable 由 runner.Manager 实现，升级前需要优雅停掉所有 frpc 子进程
@@ -69,7 +73,15 @@ type Upgrader struct {
 func NewUpgrader(c *Checker, stop Stoppable, dataDir string) *Upgrader {
 	return &Upgrader{
 		c: c, stop: stop, dataDir: dataDir,
-		client:       &http.Client{Timeout: 10 * time.Minute},
+		// 安装包可能上百 MB，整体给 10 分钟；但「连上却不回响应」要在 stallTimeout 内失败，
+		// 否则直连被墙时永远卡住，镜像回退形同虚设
+		client: &http.Client{Timeout: 10 * time.Minute, Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: stallTimeout, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   stallTimeout,
+			ResponseHeaderTimeout: stallTimeout,
+			ExpectContinueTimeout: time.Second,
+		}},
 		hostCheck:    allowedHost,
 		mirrorPrefix: mirror,
 		execFunc:     syscall.Exec,
@@ -169,7 +181,7 @@ func (u *Upgrader) Start(to string) error {
 
 	from := inf.Current
 	u.set(UpgradeState{State: "downloading", Message: "正在下载安装包", From: from, To: to})
-	go u.run(cap, dlURL, sumURL, from, to)
+	go u.run(cap, dlURL, sumURL, from, to, inf.Source == "ghfast")
 	return nil
 }
 
@@ -193,7 +205,7 @@ func (u *Upgrader) fail(from, to string, err error) {
 	u.set(UpgradeState{State: "error", Message: err.Error(), From: from, To: to})
 }
 
-func (u *Upgrader) run(cap Capability, dlURL, sumURL, from, to string) {
+func (u *Upgrader) run(cap Capability, dlURL, sumURL, from, to string, mirrorFirst bool) {
 	workDir := filepath.Join(u.dataDir, "update")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		u.fail(from, to, err)
@@ -201,18 +213,20 @@ func (u *Upgrader) run(cap Capability, dlURL, sumURL, from, to string) {
 	}
 	defer os.RemoveAll(workDir)
 
+	// 先取校验和：拿不到时不必先下载完整安装包，网络受限能尽早失败
+	want, err := u.expectedSum(sumURL, cap.AssetName, mirrorFirst)
+	if err != nil {
+		u.fail(from, to, err)
+		return
+	}
+
 	archive := filepath.Join(workDir, cap.AssetName)
-	if err := u.download(dlURL, archive); err != nil {
+	if err := u.download(dlURL, archive, mirrorFirst); err != nil {
 		u.fail(from, to, err)
 		return
 	}
 
 	u.set(UpgradeState{State: "verifying", Message: "正在校验下载文件", From: from, To: to})
-	want, err := u.expectedSum(sumURL, cap.AssetName)
-	if err != nil {
-		u.fail(from, to, err)
-		return
-	}
 	got, err := fileSum(archive)
 	if err != nil {
 		u.fail(from, to, err)
@@ -266,29 +280,30 @@ func (u *Upgrader) run(cap Capability, dlURL, sumURL, from, to string) {
 	}
 }
 
-func (u *Upgrader) download(urlStr, dest string) error {
-	data, err := u.get(urlStr)
+func (u *Upgrader) download(urlStr, dest string, mirrorFirst bool) error {
+	data, err := u.get(urlStr, mirrorFirst)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(dest, data, 0o644)
 }
 
-// get 只允许 GitHub 与既定镜像域名，避免 Release 数据被改写后指向任意主机
-func (u *Upgrader) get(urlStr string) ([]byte, error) {
+// get 只允许 GitHub 与既定镜像域名，避免 Release 数据被改写后指向任意主机。
+// mirrorFirst 表示检查阶段走的镜像：下载也先走镜像，否则直连 GitHub 会长时间挂住、镜像回退永远轮不到
+func (u *Upgrader) get(urlStr string, mirrorFirst bool) ([]byte, error) {
 	// 先校验原始地址：不在允许列表就不做任何回退，防止拼到镜像后绕过校验
 	if err := u.hostCheck(urlStr); err != nil {
 		return nil, err
 	}
-	data, err := u.getRaw(urlStr)
+	primary, alt := urlStr, u.mirrorPrefix+urlStr
+	if mirrorFirst && u.mirrorPrefix != "" {
+		primary, alt = alt, urlStr
+	}
+	data, err := u.getRaw(primary)
 	if err == nil {
 		return data, nil
 	}
-	if u.mirrorPrefix == "" {
-		return nil, err
-	}
-	alt := u.mirrorPrefix + urlStr
-	if u.hostCheck(alt) != nil {
+	if u.mirrorPrefix == "" || u.hostCheck(alt) != nil {
 		return nil, err
 	}
 	if altData, altErr := u.getRaw(alt); altErr == nil {
@@ -320,8 +335,8 @@ func (u *Upgrader) getRaw(urlStr string) ([]byte, error) {
 }
 
 // expectedSum 从 sha256sums.txt 中取出目标文件的校验和
-func (u *Upgrader) expectedSum(sumURL, asset string) (string, error) {
-	body, err := u.get(sumURL)
+func (u *Upgrader) expectedSum(sumURL, asset string, mirrorFirst bool) (string, error) {
+	body, err := u.get(sumURL, mirrorFirst)
 	if err != nil {
 		return "", err
 	}
