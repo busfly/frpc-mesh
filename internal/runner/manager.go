@@ -107,12 +107,25 @@ type Manager struct {
 	jobs        map[string]*downloadJob
 	remoteCache map[string]remoteCacheEntry
 	fails       map[int64]int // 连续快速退出计数（自愈熔断用）
-	store       *store.Store
-	dataDir     string
+	// downloadFailed 记录本进程内补下载已失败的 pin 版本，避免失败后反复触发（§2.4：不重试、下次触发再试）
+	downloadFailed map[string]struct{}
+	// downloadFunc / restartFunc / watchPoll 为可注入项，单测替换以隔离真实网络与进程（同 update 包 execFunc 套路）
+	downloadFunc func(version, source string) error
+	restartFunc  func(id int64) error
+	watchPoll    time.Duration
+	store        *store.Store
+	dataDir      string
 }
 
 func NewManager(st *store.Store, dataDir string) *Manager {
-	return &Manager{procs: map[int64]*proc{}, jobs: map[string]*downloadJob{}, remoteCache: map[string]remoteCacheEntry{}, fails: map[int64]int{}, store: st, dataDir: dataDir}
+	m := &Manager{
+		procs: map[int64]*proc{}, jobs: map[string]*downloadJob{}, remoteCache: map[string]remoteCacheEntry{},
+		fails: map[int64]int{}, downloadFailed: map[string]struct{}{}, store: st, dataDir: dataDir,
+		watchPoll: 2 * time.Second,
+	}
+	m.downloadFunc = m.StartDownload
+	m.restartFunc = m.Restart
+	return m
 }
 
 func (m *Manager) ConfigDir() string {
@@ -529,6 +542,78 @@ func (m *Manager) StartEnabled() {
 			m.mu.Unlock()
 		}
 		time.Sleep(300 * time.Millisecond)
+	}
+	m.ReconcilePinnedVersions()
+}
+
+// ReconcilePinnedVersions 为启用且指定版本（pin）尚未下载的实例补下载并自动切换：
+// 同版本正在下载则跳过；下载成功后重启 pin 该版本的运行中实例（隧道中断数秒自恢复，
+// 与重启语义一致）；失败（含版本已从远程消失）不重试、不报错给前端，保持默认版本，
+// 下次进程启动或保存服务器时再 reconcile。
+func (m *Manager) ReconcilePinnedVersions() {
+	list, err := m.store.ListEnabledInstances()
+	if err != nil {
+		return
+	}
+	for _, in := range list {
+		pin := in.FrpcVersion
+		if pin == "" || m.HasVersion(pin) {
+			continue
+		}
+		m.mu.Lock()
+		_, failed := m.downloadFailed[pin]
+		m.mu.Unlock()
+		if failed {
+			continue
+		}
+		if st, _ := m.DownloadStatus(pin); st == "downloading" {
+			continue
+		}
+		if err := m.downloadFunc(pin, "github"); err != nil {
+			m.mu.Lock()
+			m.downloadFailed[pin] = struct{}{}
+			m.mu.Unlock()
+			continue
+		}
+		go m.watchPinnedDownload(pin)
+	}
+}
+
+// watchPinnedDownload 轮询补下载任务至终态；不碰真实下载逻辑，便于单测注入
+func (m *Manager) watchPinnedDownload(version string) {
+	poll := m.watchPoll
+	if poll <= 0 {
+		poll = 2 * time.Second
+	}
+	for {
+		status, _ := m.DownloadStatus(version)
+		switch status {
+		case "downloading":
+			time.Sleep(poll)
+		case "done":
+			m.mu.Lock()
+			delete(m.downloadFailed, version)
+			m.mu.Unlock()
+			m.restartPinnedInstances(version)
+			return
+		default: // error / none：失败或任务丢失，保持默认版本不处理
+			m.mu.Lock()
+			m.downloadFailed[version] = struct{}{}
+			m.mu.Unlock()
+			return
+		}
+	}
+}
+
+func (m *Manager) restartPinnedInstances(version string) {
+	list, err := m.store.ListEnabledInstances()
+	if err != nil {
+		return
+	}
+	for _, in := range list {
+		if in.FrpcVersion == version && m.IsRunning(in.ID) {
+			_ = m.restartFunc(in.ID)
+		}
 	}
 }
 
