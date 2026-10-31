@@ -36,7 +36,7 @@ release:
 		mkdir -p dist/.stage/$$name dist/.stage/$$name/docs; \
 		cp pack-base/start.sh $(FRPC_BASE)/$$p/frpc dist/.stage/$$name/; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build $(LDFLAGS) -o dist/.stage/$$name/frpc-mesh . || exit 1; \
-		cp README.md dist/.stage/$$name/ && cp docs/*.md dist/.stage/$$name/docs/ && cp API.md dist/.stage/$$name/docs/api.md && cp -R docs/screenshots dist/.stage/$$name/docs/; \
+		cp README.md README-CN.md dist/.stage/$$name/ && cp docs/*.md dist/.stage/$$name/docs/ && cp API.md dist/.stage/$$name/docs/api.md && cp -R docs/screenshots dist/.stage/$$name/docs/; \
 		tar czf dist/$$name.tar.gz -C dist/.stage $$name || exit 1; \
 	done
 	@rm -rf dist/.stage
