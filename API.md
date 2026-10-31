@@ -36,9 +36,9 @@
 - `GET /api/instances/{id}/logs?tail=500` → `{"lines":["...","..."]}`（最近 N 行 frpc 输出）
 - `POST /api/instances/{id}/logs/clear` → `{"ok":true}`（清空内存日志缓冲）
 - `POST /api/instances/{id}/proxies/ping` → `[{"id":1,"name":"ssh","type":"tcp","latency_ms":23}]`
-  从 frpc-mesh 所在主机向 frps 的远程端口做 TCP 连通测量；`latency_ms = -1` 表示不可测（非 tcp/udp 类型、无远程端口或连接失败）
+  仅 POST（GET 返回 405）；从 frpc-mesh 所在主机 TCP 连接 frps 的远程端口测隧道延迟。`latency_ms`：`-1` 不通/不可测（非 tcp 类型、未启用、无远程端口或连接失败）、`0` 隧道通但服务静默无回包、`>0` 往返毫秒
 - `GET /api/instances/{id}/config` → `{"toml":"serverAddr = ...\n..."}`（生成的 frpc TOML 预览）
-- `GET /api/instances/{id}/proxies/status` → `[{"name":"ssh","type":"tcp","status":"running","local_addr":"127.0.0.1:22","remote_addr":"x.x.x.x:6000","err":""}]`（来自 frpc admin API；未启用 admin 或实例未在线时返回 `[]`）
+- `GET /api/instances/{id}/proxies/online` → `{"online_ids":[1,2,3]}`（在线隧道 ID；判定 = frpc 日志确认隧道建立 + 本地目标数据层可达，visitor/udp 只看隧道）
 
 ### instance 对象
 ```json
@@ -127,7 +127,6 @@ visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors
 - `GET /api/settings/backup` → 备份文件：`{"app":"frpc-mesh","version":1,"exported_at":"...","instances":[{...instance 全字段(不含 runtime)...,"proxies":[...proxy 全字段...]}]}`
 - `POST /api/settings/backup/restore`（body 为上述备份 JSON）→ 先停止全部 frpc 进程，清空现有服务器/代理后按备份重建（ID 重新分配），再自动拉起 enabled 的服务器；返回 `{"instances":n,"proxies":m}`；body 非备份格式返回 400
 - `GET /api/settings/net-hints` → `{"host_docker_internal":"host.docker.internal","host_gateway":"172.17.0.1","container_ip":"172.17.0.5","source":"proc"}`
-  host_docker_internal：容器内可解析该域名时返回，为访问宿主机的首选地址（compose 已配 extra_hosts host-gateway，Linux 亦可解析）；host_gateway：默认路由网关（备选）；source: env(环境变量 FRPC_MESH_HOST_GATEWAY 覆盖) | proc(/proc/net/route) | none(非容器环境探测不到，host_gateway 为空)
   host_docker_internal：容器内可解析该域名时返回，为访问宿主机的首选地址（compose 已配 extra_hosts host-gateway，Linux 亦可解析）；host_gateway：默认路由网关（备选）；source: env(环境变量 FRPC_MESH_HOST_GATEWAY 覆盖) | proc(/proc/net/route) | none(非容器环境探测不到，host_gateway 为空)
 
 ## frpc 版本管理
