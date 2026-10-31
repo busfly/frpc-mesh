@@ -649,7 +649,9 @@ func (s *Server) handleCreateProxy(w http.ResponseWriter, r *http.Request) {
 	p := payload.Proxy
 	p.ID = 0
 	p.InstanceID = id
-	if payload.Enabled == nil {
+	if payload.Enabled != nil {
+		p.Enabled = *payload.Enabled
+	} else {
 		p.Enabled = true // 旧客户端/旧备份未带该字段时默认启用
 	}
 	if p.Kind == "" {

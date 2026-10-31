@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -288,10 +289,19 @@ func (m *Manager) pump(id int64, p *proc, r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
-		line := sc.Text()
+		line := stripANSI(sc.Text())
 		p.appendLine(line)
 		m.classify(p, line)
 	}
+}
+
+var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	if !strings.Contains(s, "\x1b") {
+		return s
+	}
+	return ansiSeq.ReplaceAllString(s, "")
 }
 
 func (m *Manager) classify(p *proc, line string) {
