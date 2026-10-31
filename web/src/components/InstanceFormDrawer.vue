@@ -252,7 +252,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { apiCreateInstance, apiUpdateInstance, getVersionsLocal } from '../api'
+import { apiCreateInstance, apiUpdateInstance } from '../api'
 import type { Instance } from '../api/types'
 import { useInstancesStore } from '../stores/instances'
 
@@ -287,32 +287,21 @@ const form = reactive({
 })
 
 // 版本选择器只列本地已下载版本；编辑对象指定的版本若已被删，仍列出并标注
-const localVersions = ref<string[]>([])
-const activeVersion = ref('')
-
 const versionOptions = computed(() => {
-  const list = [...localVersions.value]
+  const list = [...store.frpcVersions.downloaded]
   const pin = form.frpc_version
   if (pin && !list.includes(pin)) list.unshift(pin)
   return list
 })
+
+const activeVersion = computed(() => store.frpcVersions.active)
 
 const followLabel = computed(() =>
   activeVersion.value ? `跟随默认（当前 v${activeVersion.value}）` : '跟随默认'
 )
 
 function missingPin(v: string) {
-  return v === form.frpc_version && !localVersions.value.includes(v)
-}
-
-async function loadVersions() {
-  try {
-    const local = await getVersionsLocal()
-    activeVersion.value = local.active || ''
-    localVersions.value = (local.versions || []).map((v) => v.version)
-  } catch {
-    localVersions.value = []
-  }
+  return v === form.frpc_version && !store.frpcVersions.downloaded.includes(v)
 }
 
 const transport = reactive({
@@ -431,7 +420,7 @@ function onOpen() {
     admin.password = ''
   }
   activeCollapse.value = []
-  loadVersions()
+  store.loadFrpcVersions()
 }
 
 async function onSave() {

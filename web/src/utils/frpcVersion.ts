@@ -1,19 +1,9 @@
 import type { Instance } from '../api/types'
-import { getVersionsLocal } from '../api'
 
 export interface VersionState {
   /** 全局默认版本（版本管理页激活的那个） */
   active: string
   downloaded: string[]
-}
-
-export async function loadVersionState(): Promise<VersionState> {
-  try {
-    const local = await getVersionsLocal()
-    return { active: local.active || '', downloaded: (local.versions || []).map((v) => v.version) }
-  } catch {
-    return { active: '', downloaded: [] }
-  }
 }
 
 /** 实际生效版本：运行中以进程记录为准；未运行按「指定且已下载→指定，否则默认」推算 */

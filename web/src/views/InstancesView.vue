@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, QuestionFilled } from '@element-plus/icons-vue'
@@ -136,13 +136,7 @@ import { apiListProxies, apiProxiesOnline, apiUpdateInstance } from '../api'
 import type { Instance } from '../api/types'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
-import {
-  FRPC_VERSION_FALLBACK_TIP,
-  frpcVersionFallback,
-  frpcVersionLabel,
-  loadVersionState,
-  type VersionState
-} from '../utils/frpcVersion'
+import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 
 const router = useRouter()
 const store = useInstancesStore()
@@ -172,12 +166,9 @@ async function refreshProxyCounts() {
   )
 }
 
-const versionState = ref<VersionState>({ active: '', downloaded: [] })
+const versionState = computed(() => store.frpcVersions)
 
-onMounted(() => {
-  refreshProxyCounts()
-  loadVersionState().then((s) => (versionState.value = s))
-})
+onMounted(refreshProxyCounts)
 watch(() => store.instances.map((i) => `${i.id}:${i.updated_at}`).join(','), refreshProxyCounts)
 
 /** 名称点击 → 穿透代理页对应实例 Tab */

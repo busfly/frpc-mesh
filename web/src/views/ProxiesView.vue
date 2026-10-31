@@ -276,7 +276,7 @@ import {
 import type { Proxy } from '../api/types'
 import { useInstancesStore } from '../stores/instances'
 import { proxyTypeColor, proxyTypeLabel, statusDotColor } from '../utils/status'
-import { frpcVersionLabel, loadVersionState, type VersionState } from '../utils/frpcVersion'
+import { frpcVersionLabel } from '../utils/frpcVersion'
 
 const route = useRoute()
 const router = useRouter()
@@ -430,10 +430,9 @@ watch(
 
 let onlineTimer: number | undefined
 
-const versionState = ref<VersionState>({ active: '', downloaded: [] })
+const versionState = computed(() => store.frpcVersions)
 
 onMounted(() => {
-  loadVersionState().then((s) => (versionState.value = s))
   // 实例列表由全局 store 每 10 秒静默轮询刷新；此处确保已有数据并加载当前 tab 代理
   if (!store.instances.length) store.refresh()
   const n = currentInstanceId()

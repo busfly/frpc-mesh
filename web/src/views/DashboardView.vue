@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive } from 'vue'
 import type { Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -124,13 +124,7 @@ import {
 import { apiGetInstance, apiUpdateInstance } from '../api'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
-import {
-  FRPC_VERSION_FALLBACK_TIP,
-  frpcVersionFallback,
-  frpcVersionLabel,
-  loadVersionState,
-  type VersionState
-} from '../utils/frpcVersion'
+import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 import type { Dashboard, DashboardInstance } from '../api/types'
 
 const router = useRouter()
@@ -146,15 +140,12 @@ interface StatCard {
   tip: string
 }
 
-const versionState = ref<VersionState>({ active: '', downloaded: [] })
-onMounted(() => {
-  loadVersionState().then((s) => (versionState.value = s))
-})
+const versionState = computed(() => store.frpcVersions)
 
 /** 仪表盘行来自 /api/dashboard（精简视图），版本信息按 id 回查完整实例 */
 function rowVersionLabel(row: DashboardInstance): string {
   const inst = store.getInstance(row.id)
-  return inst ? frpcVersionLabel(inst, versionState.value) : '-'
+  return inst ? frpcVersionLabel(inst, versionState.value) : ''
 }
 
 function rowVersionFallback(row: DashboardInstance): boolean {
