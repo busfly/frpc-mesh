@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"frpc-mesh/internal/auth"
@@ -30,6 +31,8 @@ type Server struct {
 	Upgrade *update.Upgrader
 	Version string
 	WebFS   fs.FS // 前端静态资源根（已含 index.html）
+	// probeTCP 端口探测注入点，默认 net.DialTimeout；单测替换以隔离真实网络
+	probeTCP func(addr string) error
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -84,6 +87,7 @@ func (s *Server) Routes() http.Handler {
 	protected.HandleFunc("GET /api/instances/{id}/proxies/online", s.handleProxiesOnline)
 	protected.HandleFunc("GET /api/instances/{id}/proxies", s.handleListProxies)
 	protected.HandleFunc("POST /api/instances/{id}/proxies", s.handleCreateProxy)
+	protected.HandleFunc("POST /api/proxies/check-port", s.handleCheckPort)
 	protected.HandleFunc("PUT /api/proxies/{pid}", s.handleUpdateProxy)
 	protected.HandleFunc("PUT /api/proxies/{pid}/enabled", s.handleSetProxyEnabled)
 	protected.HandleFunc("DELETE /api/proxies/{pid}", s.handleDeleteProxy)
@@ -753,6 +757,123 @@ func (s *Server) handleDeleteProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Mgr.RestartIfRunning(old.InstanceID)
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// ---------- 远程端口占用检测 ----------
+
+type checkPortRequest struct {
+	InstanceID     int64  `json:"instance_id"`
+	Type           string `json:"type"`
+	RemotePort     int    `json:"remote_port"`
+	ExcludeProxyID int64  `json:"exclude_proxy_id"`
+}
+
+type checkPortResponse struct {
+	State  string `json:"state"`  // free | occupied | unknown；unknown 永不阻断保存
+	Holder string `json:"holder"` // occupied 时的占用者描述
+	Note   string `json:"note"`   // unknown 时的限制说明
+}
+
+type portHolder struct {
+	ProxyID      int64
+	InstanceID   int64
+	InstanceName string
+	ProxyName    string
+}
+
+// findRemotePortHolders 本机跨服务器查重：与目标实例同 server_addr+server_port 的实例下，
+// 启用中、type 相同（tcp/udp 端口空间互不冲突）且远程端口相同的代理
+func (s *Server) findRemotePortHolders(in *model.Instance, typ string, remotePort int) ([]portHolder, error) {
+	instances, err := s.Store.ListInstances()
+	if err != nil {
+		return nil, err
+	}
+	var out []portHolder
+	for _, peer := range instances {
+		if peer.ServerAddr != in.ServerAddr || peer.ServerPort != in.ServerPort {
+			continue
+		}
+		proxies, err := s.Store.ListProxies(peer.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, px := range proxies {
+			if px.Enabled && px.Type == typ && px.RemotePort == remotePort {
+				out = append(out, portHolder{px.ID, peer.ID, peer.Name, px.Name})
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) dialRemotePort(addr string) error {
+	if s.probeTCP != nil {
+		return s.probeTCP(addr)
+	}
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+// handleCheckPort 检测远程端口占用，口径见设计 §3.1：先本机跨服务器查重，tcp 再探测服务端
+func (s *Server) handleCheckPort(w http.ResponseWriter, r *http.Request) {
+	var req checkPortRequest
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, 400, "请求格式错误")
+		return
+	}
+	in, err := s.Store.GetInstance(req.InstanceID)
+	if err != nil {
+		writeErr(w, 400, "实例不存在")
+		return
+	}
+	if req.RemotePort <= 0 || req.RemotePort > 65535 {
+		writeErr(w, 400, "远程端口需在 1-65535 之间")
+		return
+	}
+	if req.Type != "tcp" && req.Type != "udp" {
+		writeJSON(w, 200, checkPortResponse{State: "unknown", Note: "仅支持 tcp/udp 的远程端口检测"})
+		return
+	}
+	holders, err := s.findRemotePortHolders(in, req.Type, req.RemotePort)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	// 1. 本机查重（排除当前编辑中的代理）
+	for _, h := range holders {
+		if h.ProxyID != req.ExcludeProxyID {
+			writeJSON(w, 200, checkPortResponse{State: "occupied",
+				Holder: fmt.Sprintf("服务器「%s」的代理「%s」", h.InstanceName, h.ProxyName)})
+			return
+		}
+	}
+	// 2. udp 无法从本机探测，查重未命中即明示限制
+	if req.Type == "udp" {
+		writeJSON(w, 200, checkPortResponse{State: "unknown",
+			Note: "udp 端口无法从本机探测，仅确认本机其它代理未占用"})
+		return
+	}
+	// 3. tcp 探测服务端
+	err = s.dialRemotePort(net.JoinHostPort(in.ServerAddr, strconv.Itoa(req.RemotePort)))
+	if err != nil && !errors.Is(err, syscall.ECONNREFUSED) {
+		// 超时/DNS 失败等一律 unknown，不阻断保存（可能被安全组静默丢弃）
+		writeJSON(w, 200, checkPortResponse{State: "unknown",
+			Note: "连接超时：可能被安全组静默丢弃或服务不可达；未阻断保存"})
+		return
+	}
+	if err != nil { // 明确拒绝 → 空闲
+		writeJSON(w, 200, checkPortResponse{State: "free"})
+		return
+	}
+	// 连得上：唯一持有者是“被排除的自身”且其实例在运行，才能解释为本机占用；否则视为服务端已有监听
+	if len(holders) == 1 && holders[0].ProxyID == req.ExcludeProxyID && s.Mgr.IsRunning(holders[0].InstanceID) {
+		writeJSON(w, 200, checkPortResponse{State: "free"})
+		return
+	}
+	writeJSON(w, 200, checkPortResponse{State: "occupied", Holder: "服务端已有监听（非本机配置）"})
 }
 
 // ---------- settings ----------
