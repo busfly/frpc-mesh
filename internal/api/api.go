@@ -410,6 +410,7 @@ func (s *Server) handleCreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 指定的 frpc 版本可能还没下载，异步补下载并在成功后自动切换
+	s.Mgr.ClearPinnedDownloadFailure(in.FrpcVersion)
 	go s.Mgr.ReconcilePinnedVersions()
 	writeJSON(w, 201, s.withRuntime(&in))
 }
@@ -450,6 +451,7 @@ func (s *Server) handleUpdateInstance(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.Mgr.RestartIfRunning(id)
 	}
+	s.Mgr.ClearPinnedDownloadFailure(in.FrpcVersion)
 	go s.Mgr.ReconcilePinnedVersions()
 	writeJSON(w, 200, s.withRuntime(&in))
 }

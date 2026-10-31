@@ -107,7 +107,8 @@ type Manager struct {
 	jobs        map[string]*downloadJob
 	remoteCache map[string]remoteCacheEntry
 	fails       map[int64]int // 连续快速退出计数（自愈熔断用）
-	// downloadFailed 记录本进程内补下载已失败的 pin 版本，避免失败后反复触发（§2.4：不重试、下次触发再试）
+	// downloadFailed 记录本进程内补下载已失败的 pin 版本：自动 reconcile 不再反复重试，
+	// 用户重新保存该服务器时清除标记（显式动作即重试意图）
 	downloadFailed map[string]struct{}
 	// downloadFunc / restartFunc / watchPoll 为可注入项，单测替换以隔离真实网络与进程（同 update 包 execFunc 套路）
 	downloadFunc func(version, source string) error
@@ -544,6 +545,16 @@ func (m *Manager) StartEnabled() {
 		time.Sleep(300 * time.Millisecond)
 	}
 	m.ReconcilePinnedVersions()
+}
+
+// ClearPinnedDownloadFailure 清除某版本的补下载失败标记，供用户重新保存服务器时重试
+func (m *Manager) ClearPinnedDownloadFailure(version string) {
+	if version == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.downloadFailed, version)
+	m.mu.Unlock()
 }
 
 // ReconcilePinnedVersions 为启用且指定版本（pin）尚未下载的实例补下载并自动切换：

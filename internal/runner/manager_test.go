@@ -301,3 +301,22 @@ func TestReconcileFailureNoRestartNoRetry(t *testing.T) {
 		t.Errorf("失败后不应重试下载，实际 %v", calls)
 	}
 }
+
+// 用户重新保存服务器（显式动作）清掉失败标记后，应允许再次补下载
+func TestReconcileRetriesAfterFailureMarkCleared(t *testing.T) {
+	m, st := newTestManager(t)
+	var calls []string
+	fakeDownload(m, "error", 10*time.Millisecond, &calls)
+	in := newEnabledInstance(t, st, "机A", "0.66.0")
+
+	m.ReconcilePinnedVersions()
+	waitUntil(t, func() bool { return m.isDownloadFailed("0.66.0") })
+	time.Sleep(20 * time.Millisecond)
+
+	m.ClearPinnedDownloadFailure(in.FrpcVersion)
+	m.ReconcilePinnedVersions()
+	waitUntil(t, func() bool { return len(calls) == 2 })
+	if len(calls) != 2 {
+		t.Errorf("清除失败标记后应重试补下载，实际 %v", calls)
+	}
+}
