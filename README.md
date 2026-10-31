@@ -15,19 +15,20 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 | Doc | Contents |
 |---|---|
 | [docs/deployment.md](docs/deployment.md) | Three install paths (compose / image tar / plain binary tar), runtime flags, first login *(zh)* |
-| [docs/operations.md](docs/operations.md) | Data directory, backup & restore, password reset, upgrade, security boundaries, troubleshooting *(zh)* |
+| [docs/operations.md](docs/operations.md) | Data directory, backup & restore, password reset, upgrade, frpc versions (default vs per-server), remote port conflicts, security boundaries, troubleshooting *(zh)* |
 | [API.md](API.md) | Backend HTTP API contract *(zh)* |
 
 > `docs/` is still Chinese-only; [README-CN.md](README-CN.md) is the reference version.
 
 ## Features
 
-- **Multiple frps servers** — create / edit / delete, each started, stopped and restarted independently; notes, dashboard port and domain fields per server
+- **Multiple frps servers** — create / edit / delete, each started, stopped and restarted independently; notes, dashboard port, domain and an optional per-server frpc version
 - One `frpc` child process per server, TOML generated automatically (and previewable); a process that dies unexpectedly is restarted, with a circuit breaker for crash loops
 - **All tunnels on one page** — create via TCP / UDP / HTTP / HTTPS / STCP / SUDP / XTCP type cards; bandwidth limit, HTTP Basic Auth, custom domain / subdomain, encryption & compression, per-proxy enable switch, notes
+- **Remote port conflict guard** — "same as local port" fills it in one click, "Check" reports whether that remote port is already taken (by another of your proxies on this server, or by an actual listener on frps); saving re-checks automatically and refuses to save an occupied port
 - **Honest online status** — a tunnel counts as online only when frpc's log confirms it *and* the local target answers a data-layer probe; "Ping all" measures every tunnel in parallel
 - Advanced transport knobs (protocol, tcpMux, pool count, heartbeat, dial timeout, TLS, STUN) shipped with defaults chosen from real-world stability testing
-- **frpc version management** — browse upstream GitHub Releases (official source + a mirror source), download a version, switch to it, running frpc processes restart on the new binary
+- **frpc version management** — browse upstream GitHub Releases (official source + a mirror source), download a version, switch to it, running frpc processes restart on the new binary. The switched version is the *default*; each server may pin its own, and a pin that is not downloaded yet starts on the default while the download runs in the background and the server restarts onto it once it lands
 - **Self-update** — checks frpc-mesh's own latest GitHub Release (official or mirror, optionally on a schedule) and reminds you in the header; when running as a plain binary it can upgrade in place (sha256 verified, new binary self-checked, `.bak` kept for rollback, tunnels drop for a few seconds then recover), while a container deployment is pointed at reloading the image instead
 - Config backup — export / import one JSON file (servers + proxies; importing overwrites)
 - JWT login with tiered lockout after repeated failures; state re-reads itself after every write
@@ -35,21 +36,21 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 
 ## Screenshots
 
-> Every screenshot comes from a **throwaway demo dataset** (`127.0.0.1:7600`, `frps-demo.example.com`, `demo-token-2026`, `nas-ssh`, …). No real host, port or token appears. The UI is currently Chinese-only — captions below are translated for reference.
+> Every screenshot comes from a **throwaway demo dataset** (`127.0.0.1:7600`, `frps-demo.example.com` / `frps-hz.example.com` / `frps-jp.example.com`, `demo-token-2026`, `nas-ssh`, …). No real host, port or token appears. The UI is currently Chinese-only — captions below are translated for reference.
 
-**Dashboard** — connection state and online totals for every frps
+**Dashboard** — connection state, effective frpc version and online totals for every frps
 <img src="docs/screenshots/dashboard.png" width="900" alt="Dashboard">
 
-**FRPS servers** — per-server status, online proxy count, enable switch, restart / manage / edit / delete
+**FRPS servers** — per-server status, frpc version (default / pinned / pinned-but-not-downloaded yet), online proxy count, enable switch, restart / manage / edit / delete
 <img src="docs/screenshots/instances.png" width="900" alt="FRPS servers">
 
-**Proxies** — one tab per server, type cards for creation, online state and ping latency
+**Proxies** — one tab per server (with its frpc version), type cards for creation, online state and ping latency
 <img src="docs/screenshots/proxies.png" width="900" alt="Proxies">
 
 <details>
 <summary>Remaining screens (forms / config / logs / versions / settings)</summary>
 
-**New FRPS server** — address, token, dashboard port, domain, notes
+**New FRPS server** — address, token, dashboard port, domain, frpc version (empty follows the default), notes
 <img src="docs/screenshots/instance-new.png" width="900" alt="New FRPS server">
 
 **Transport** — protocol, tcpMux, pool count, heartbeat, TLS
@@ -58,13 +59,13 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 **Admin API** — the local frpc admin endpoint used for tunnel details
 <img src="docs/screenshots/instance-adminapi.png" width="900" alt="Admin API settings">
 
-**New TCP proxy** — the local address can be filled with the host address in one click
+**New TCP proxy** — the local address can be filled with the host address in one click; the remote port has "same as local" and a check that names whoever occupies it
 <img src="docs/screenshots/proxy-new-tcp.png" width="900" alt="New TCP proxy">
 
 **New HTTP proxy** — custom domain / subdomain / path / Basic Auth
 <img src="docs/screenshots/proxy-new-http.png" width="900" alt="New HTTP proxy">
 
-**Edit proxy** — enable switch, encryption & compression, bandwidth limit
+**Edit proxy** — enable switch, remote port check, encryption & compression, bandwidth limit
 <img src="docs/screenshots/proxy-edit.png" width="900" alt="Edit proxy">
 
 **Config preview** — the frpc TOML generated by the backend (read-only, copyable)
@@ -73,10 +74,10 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 **Logs** — the last 500 lines of frpc output, auto-refresh and clear
 <img src="docs/screenshots/run-logs.png" width="900" alt="Runtime logs">
 
-**frpc versions** — fetch Releases, download, switch
+**frpc versions** — fetch Releases, download, switch the default; a version pinned by a server comes back on its own at the next start or when that server is saved
 <img src="docs/screenshots/versions.png" width="900" alt="frpc version management">
 
-**Settings** — active frpc version, start-on-boot, frpc-mesh version check & one-click upgrade, backup export/import, change password
+**Settings** — default frpc version, start-on-boot, frpc-mesh version check & one-click upgrade, backup export/import, change password, links to this repository
 <img src="docs/screenshots/settings.png" width="900" alt="Settings">
 
 </details>
@@ -103,10 +104,10 @@ docker compose up -d --build     # see docs/deployment.md (adjust the data dir i
 
 Typical flow:
 
-1. **FRPS 服务器** (servers) → create one: frps `server_addr` / `server_port` / token, then start it
-2. **穿透代理** (proxies) → pick a type card → local `ip:port` and remote port
+1. **FRPS 服务器** (servers) → create one: frps `server_addr` / `server_port` / token, optionally pin an frpc version for it, then start it
+2. **穿透代理** (proxies) → pick a type card → local `ip:port` and remote port (fill "same as local" and check it if you are not sure the port is free)
 3. Same page: watch online status, hit **Ping all** for latency, open **配置文件 / 运行日志** (config / logs) when something is off
-4. **设置** (settings) → confirm the frpc binary, enable start-on-boot, export a backup
+4. **设置** (settings) → confirm the default frpc binary, enable start-on-boot, export a backup
 
 When frpc-mesh itself runs in a container and you tunnel to a service on the host, the proxy's **local address** must be `host.docker.internal` (the form has a one-click chip for it) — `127.0.0.1` points at the container.
 
