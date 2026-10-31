@@ -541,9 +541,11 @@ function copyLocalPort() {
 async function onSave() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  if ((form.type === 'tcp' || form.type === 'udp') && (form.remote_port ?? 0) > 0 && checkedKey.value !== portKey()) {
-    const res = await checkPort()
+  if ((form.type === 'tcp' || form.type === 'udp') && (form.remote_port ?? 0) > 0) {
+    // 参数没变就复用刚才手动检测的结果：检测出占用后直接点保存同样要拦
+    const res = checkedKey.value === portKey() ? portCheck.value : await checkPort()
     if (res?.state === 'occupied') {
+      ElMessage.error(`远程端口 ${form.remote_port} 已被占用：${res.holder}，请换一个端口`)
       formRef.value?.scrollToField('remote_port')
       return
     }

@@ -28,7 +28,7 @@ export function frpcVersionLabel(inst: Instance, st: VersionState): string {
   const eff = effectiveVersion(inst, st)
   if (!inst.frpc_version) return eff ? `默认 v${eff}` : '默认'
   if (inst.frpc_version === eff) return `v${inst.frpc_version}`
-  return `v${inst.frpc_version} · 暂用 v${eff || '默认'}`
+  return eff ? `v${inst.frpc_version} · 暂用 v${eff}` : `v${inst.frpc_version} · 暂用默认`
 }
 
 export function frpcVersionFallback(inst: Instance, st: VersionState): boolean {
