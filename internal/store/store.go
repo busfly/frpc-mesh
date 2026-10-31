@@ -189,7 +189,8 @@ func (s *Store) SetSetting(k, v string) error {
 
 func (s *Store) GetSettings() model.Settings {
 	st := model.Settings{
-		AutoStart: s.GetSetting("auto_start", "true") == "true",
+		AutoStart:       s.GetSetting("auto_start", "true") == "true",
+		AutoUpdateCheck: s.GetSetting("auto_update_check", "true") == "true",
 	}
 	return st
 }
@@ -199,7 +200,14 @@ func (s *Store) SaveSettings(st model.Settings) error {
 	if st.AutoStart {
 		v = "true"
 	}
-	return s.SetSetting("auto_start", v)
+	if err := s.SetSetting("auto_start", v); err != nil {
+		return err
+	}
+	v = "false"
+	if st.AutoUpdateCheck {
+		v = "true"
+	}
+	return s.SetSetting("auto_update_check", v)
 }
 
 // ---------- users ----------

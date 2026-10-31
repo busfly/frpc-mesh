@@ -61,6 +61,18 @@
           <span class="topbar-title">{{ currentTitle }}</span>
         </div>
         <div class="topbar-right">
+          <el-tag
+            v-if="update.hasUpdate"
+            class="update-tag"
+            size="small"
+            type="warning"
+            effect="plain"
+            round
+            title="前往设置页查看并升级"
+            @click="router.push('/settings')"
+          >
+            发现新版本 v{{ update.info?.latest }}
+          </el-tag>
           <el-tag v-if="auth.version" size="small" type="info" effect="plain" round>
             v{{ auth.version }}
           </el-tag>
@@ -98,11 +110,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 import { useInstancesStore } from '../stores/instances'
+import { useUpdateStore } from '../stores/update'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const instancesStore = useInstancesStore()
+const update = useUpdateStore()
 const collapsed = ref(false)
 
 const activeMenu = computed(() => (route.meta.activeMenu as string) || route.path)
@@ -111,11 +125,14 @@ const currentTitle = computed(() => (route.meta.title as string) || 'frpc-mesh')
 onMounted(() => {
   auth.fetchMe()
   auth.fetchVersion()
+  // 只读本地已知的检查结果，不主动联网
+  update.load()
   instancesStore.startPolling()
 })
 
 onUnmounted(() => {
   instancesStore.stopPolling()
+  update.stopPolling()
 })
 
 function onCommand(cmd: string) {
@@ -265,6 +282,16 @@ function onCommand(cmd: string) {
   cursor: pointer;
   color: #4b5563;
   outline: none;
+}
+
+.update-tag {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.update-tag:hover {
+  background: #fdf6ec;
+  border-color: #f3d19e;
 }
 
 .user-avatar {

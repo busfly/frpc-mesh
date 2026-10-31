@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -19,20 +20,28 @@ import (
 	"frpc-mesh/internal/auth"
 	"frpc-mesh/internal/runner"
 	"frpc-mesh/internal/store"
+	"frpc-mesh/internal/update"
 )
 
 //go:embed all:web/dist
 var webDist embed.FS
 
-const Version = "1.0.0"
+// Version 构建期由 make release 注入（-X main.Version=1.0.1，不带 v 前缀），开发构建保留默认值
+var Version = "1.0.0"
 
 func main() {
 	var httpAddr, dataDir string
-	var resetPassword bool
+	var resetPassword, showVersion bool
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:18080", "HTTP 监听地址")
 	flag.StringVar(&dataDir, "data", "", "数据目录（默认 $FRPC_MESH_DATA 或 ./data）")
 	flag.BoolVar(&resetPassword, "reset-password", false, "将 admin 密码重置为 admin123 后退出（配合 docker exec 使用）")
+	flag.BoolVar(&showVersion, "version", false, "输出版本号后退出")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println(Version)
+		return
+	}
 
 	if dataDir == "" {
 		dataDir = os.Getenv("FRPC_MESH_DATA")
@@ -80,11 +89,15 @@ func main() {
 
 	mgr := runner.NewManager(st, dataDir)
 	mgr.CleanTempFiles()
+	checker := update.New(st, Version)
+	upgrader := update.NewUpgrader(checker, mgr, dataDir)
 	srv := &api.Server{
 		Store:   st,
 		Mgr:     mgr,
 		Auth:    auth.NewService(secret),
 		Login:   auth.NewLimiter(),
+		Update:  checker,
+		Upgrade: upgrader,
 		Version: Version,
 	}
 	webFS, err := fs.Sub(webDist, "web/dist")
@@ -93,9 +106,17 @@ func main() {
 	}
 	srv.WebFS = webFS
 
-	if st.GetSettings().AutoStart {
+	// 自升级重启后的新进程：记录升级结果，并保证已启用服务器被拉回运行
+	if from := os.Getenv(update.UpgradedEnv); from != "" {
+		checker.RecordUpgrade(from, Version)
+		log.Printf("已完成自升级: %s → %s", from, Version)
+	}
+	if st.GetSettings().AutoStart || os.Getenv(update.ResumeEnv) == "1" {
 		go mgr.StartEnabled()
 	}
+
+	stopChecks := make(chan struct{})
+	go checker.Loop(stopChecks)
 
 	httpSrv := &http.Server{
 		Addr:         httpAddr,
@@ -113,6 +134,7 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+	close(stopChecks)
 	log.Println("正在停止所有 frpc 实例...")
 	mgr.StopAll()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
