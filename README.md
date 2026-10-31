@@ -114,6 +114,7 @@ docker compose up -d --build     # 详见 docs/deployment.md（先按需改 comp
 │   ├── store/           # SQLite 存储与迁移
 │   └── tomlegen/        # frpc TOML 配置生成
 ├── web/                 # Vue3 + Element Plus 前端（构建产物 dist/ 被 go:embed 内嵌）
+├── pack-base/           # 交付包底座：start.sh（三平台共用）+ frpc-<版本>/<平台>/frpc
 ├── docs/                # 部署指南 / 维护手册 / screenshots 界面截图
 ├── API.md               # 接口契约
 ├── Dockerfile           # 三阶段构建（前端→后端→运行时）
@@ -121,7 +122,7 @@ docker compose up -d --build     # 详见 docs/deployment.md（先按需改 comp
 └── Makefile             # build / dev / web / docker / release
 ```
 
-`dist/`（构建产物，不入库）：交叉编译的普通运行包与各架构 Docker 镜像 tar，由 `make release` 生成。
+`dist/`（构建产物，不入库）：交叉编译的普通运行包（含随包 frpc 底座）与各架构 Docker 镜像 tar，由 `make release` 生成；发布版本挂在该仓库的 **Releases** 上下载。
 
 ## 本地开发
 
