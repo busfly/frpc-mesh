@@ -1,0 +1,149 @@
+:root {
+  --fm-primary-grad: linear-gradient(135deg, #4f6ef7 0%, #8b5cf6 100%);
+  --fm-sidebar-bg: #171c2e;
+  --fm-sidebar-bg-light: #1f2640;
+  --fm-page-bg: #f3f5fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  background: var(--fm-page-bg);
+  color: #303133;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-container {
+  padding: 20px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: #1f2433;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: #909399;
+  margin: 0 0 18px;
+}
+
+.card {
+  border-radius: 10px;
+  border: none;
+  box-shadow: 0 1px 4px rgba(31, 36, 51, 0.06) !important;
+}
+
+.mono {
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;
+}
+
+.text-muted {
+  color: #909399;
+}
+
+/* 终端风格日志 */
+.terminal {
+  background: #0d1117;
+  color: #c9d1d9;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 渐变统计卡片 */
+.stat-card {
+  border-radius: 12px;
+  color: #fff;
+  padding: 20px 22px;
+  position: relative;
+  overflow: hidden;
+  min-height: 104px;
+}
+
+.stat-card .stat-value {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 6px;
+}
+
+.stat-card .stat-label {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.stat-card .stat-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 52px;
+  opacity: 0.22;
+}
+
+.stat-gradient-blue {
+  background: linear-gradient(135deg, #4f6ef7 0%, #6a8bff 100%);
+}
+.stat-gradient-green {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+}
+.stat-gradient-purple {
+  background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+}
+.stat-gradient-orange {
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+}
+.stat-gradient-cyan {
+  background: linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%);
+}
+
+.brand-text {
+  background: var(--fm-primary-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 滚动条美化（日志区） */
+.terminal::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.terminal::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+@media (max-width: 1024px) {
+  .page-container {
+    padding: 14px;
+  }
+}
+
+/* 数字输入框默认居中（含 .is-center 变体），统一改为左对齐，保持所有表单视觉一致 */
+.el-input-number .el-input__inner,
+.el-input-number.is-center .el-input__inner {
+  text-align: left;
+}

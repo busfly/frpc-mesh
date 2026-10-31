@@ -1,0 +1,11 @@
+# 构建上下文瘦身：前端依赖与产物由多阶段构建自行生成，源码目录无关物不上传
+.git
+data
+dist
+web/node_modules
+web/dist
+frpc-mesh
+*.db
+*.db-wal
+*.db-shm
+.DS_Store

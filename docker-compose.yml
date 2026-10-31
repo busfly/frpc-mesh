@@ -1,0 +1,29 @@
+services:
+  frpc-mesh:
+    build: .
+    image: frpc-mesh:latest
+    container_name: frpc-mesh
+    restart: unless-stopped
+    network_mode: bridge
+    # Linux（NAS）上让容器内可解析 host.docker.internal 指向宿主机
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "18080:18080"
+    volumes:
+      # 数据挂到宿主机目录（配置/版本/生成文件全部在此，卸载 Docker 不丢，直接拷贝即备份）
+      # 如需回到 Docker 命名卷方式，改回: - frpc-mesh-data:/data 并在末尾 volumes 段声明
+      - /Volumes/MAC_U_202411/docker/frpc-mesh/data:/data
+      # 如需使用宿主机自备的 frpc 二进制，取消注释：
+      # - /usr/local/bin/frpc:/usr/local/bin/frpc:ro
+    environment:
+      - TZ=Asia/Shanghai
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# volumes:
+#   frpc-mesh-data:
