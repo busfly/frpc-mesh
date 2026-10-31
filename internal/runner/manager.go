@@ -40,8 +40,10 @@ type proc struct {
 	startedAt time.Time
 	lines     []string
 	online    bool
-	proxySt   map[string]string // 代理名 → running | error | pending（源自 frpc 日志）
-	done      chan struct{}     // wait goroutine 退出时关闭
+	// frpcVersion 启动时实际使用的版本，创建后只读；空串=系统 frpc 兜底（版本未知）
+	frpcVersion string
+	proxySt     map[string]string // 代理名 → running | error | pending（源自 frpc 日志）
+	done        chan struct{}     // wait goroutine 退出时关闭
 }
 
 func (p *proc) setProxyStatus(name, st string) {
@@ -124,6 +126,19 @@ func (m *Manager) ResolveFrpc() (string, error) {
 	return m.resolveFrpcBinary()
 }
 
+// ResolveFrpcFor 按实例解析 frpc 二进制与生效版本：pin 已下载 > 默认版本已下载 > 系统兜底。
+// effective 为空串表示走的是系统 frpc 兜底，版本未知。
+func (m *Manager) ResolveFrpcFor(in *model.Instance) (path, effective string, err error) {
+	if in != nil && in.FrpcVersion != "" && m.HasVersion(in.FrpcVersion) {
+		return m.versionPath(in.FrpcVersion), in.FrpcVersion, nil
+	}
+	if v := m.ActiveVersion(); v != "" && m.HasVersion(v) {
+		return m.versionPath(v), v, nil
+	}
+	p, err := m.resolveFrpcBinary()
+	return p, "", err
+}
+
 func (m *Manager) FrpcVersion() string {
 	p, err := m.ResolveFrpc()
 	if err != nil {
@@ -184,6 +199,7 @@ func (m *Manager) Runtime(id int64) *model.Runtime {
 	rt.Status = status
 	rt.LastError = lastErr
 	rt.PID = pid
+	rt.FrpcVersion = p.frpcVersion
 	if !startedAt.IsZero() {
 		rt.StartedAt = startedAt.UTC().Format(time.RFC3339)
 		rt.UptimeSeconds = int64(time.Since(startedAt).Seconds())
@@ -240,7 +256,7 @@ func (m *Manager) Start(in *model.Instance) error {
 	}
 	m.mu.Unlock()
 
-	frpcPath, err := m.ResolveFrpc()
+	frpcPath, effectiveVersion, err := m.ResolveFrpcFor(in)
 	if err != nil {
 		return err
 	}
@@ -274,7 +290,7 @@ func (m *Manager) Start(in *model.Instance) error {
 		return fmt.Errorf("启动 frpc 失败: %v", err)
 	}
 
-	p := &proc{cmd: cmd, cancel: cancel, status: StatusStarting, startedAt: time.Now(), done: make(chan struct{})}
+	p := &proc{cmd: cmd, cancel: cancel, status: StatusStarting, startedAt: time.Now(), done: make(chan struct{}), frpcVersion: effectiveVersion}
 	m.mu.Lock()
 	m.procs[in.ID] = p
 	m.mu.Unlock()
