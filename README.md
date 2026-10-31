@@ -2,6 +2,10 @@
 
 [English](README.md) | [中文](README-CN.md)
 
+[![Stars](https://img.shields.io/github/stars/busfly/frpc-mesh?style=flat-square)](https://github.com/busfly/frpc-mesh/stargazers)
+[![Release](https://img.shields.io/github/v/release/busfly/frpc-mesh?style=flat-square)](https://github.com/busfly/frpc-mesh/releases)
+[![License](https://img.shields.io/github/license/busfly/frpc-mesh?style=flat-square)](LICENSE)
+
 A web control panel for **frp** ([fatedier/frp](https://github.com/fatedier/frp)) that manages **several remote frps servers at the same time** — one `frpc` process per server. Designed to run on a NAS, a router box, or any Docker host.
 
 The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own `frpc` child process and its own generated TOML, so all tunnels across all servers are listed, started, pinged and edited from a single page. It does **not** run frps itself — the server side is assumed to be up already.
@@ -140,6 +144,10 @@ make release GO=go  # assemble dist/ packages
 ```
 
 Frontend hot reload: `cd web && pnpm dev` (it proxies `/api` to 18080).
+
+## Support the project
+
+If frpc-mesh saves you babysitting several `frpc` processes, [star the repo](https://github.com/busfly/frpc-mesh) — that's how new users (and contributors) find it. Bugs and feature requests go to [Issues](https://github.com/busfly/frpc-mesh/issues/new).
 
 ## License
 

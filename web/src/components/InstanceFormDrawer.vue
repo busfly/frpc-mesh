@@ -83,6 +83,29 @@
           placeholder="选填，例如 frps.example.com；配置后代理列表的远程链接优先用域名打开"
         />
       </el-form-item>
+      <el-form-item>
+        <template #label>
+          <span class="label-with-hint">
+            frpc 版本
+            <el-tooltip
+              placement="top"
+              content="老服务端配新客户端（或反之）可能连不上，可只为这台服务器固定一个版本。不指定即跟随「frpc 版本管理」里的默认版本；指定的版本若还没下载，会先用默认版本启动，后台补下载完成后自动重启切过去。"
+            >
+              <el-icon class="hint-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </span>
+        </template>
+        <el-select v-model="form.frpc_version" class="full-width">
+          <el-option :value="''" :label="followLabel">
+            <span>{{ followLabel }}</span>
+          </el-option>
+          <el-option v-for="v in versionOptions" :key="v" :value="v">
+            <span class="mono">v{{ v }}</span>
+            <span v-if="missingPin(v)" class="opt-note">未下载</span>
+            <span v-else-if="v === activeVersion" class="opt-note">默认</span>
+          </el-option>
+        </el-select>
+      </el-form-item>
       <el-form-item label="备注说明">
         <el-input
           v-model="form.remark"
@@ -229,7 +252,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { apiCreateInstance, apiUpdateInstance } from '../api'
+import { apiCreateInstance, apiUpdateInstance, getVersionsLocal } from '../api'
 import type { Instance } from '../api/types'
 import { useInstancesStore } from '../stores/instances'
 
@@ -259,8 +282,38 @@ const form = reactive({
   manage_port: undefined as number | undefined,
   remark: '',
   domain: '',
+  frpc_version: '',
   enabled: true
 })
+
+// 版本选择器只列本地已下载版本；编辑对象指定的版本若已被删，仍列出并标注
+const localVersions = ref<string[]>([])
+const activeVersion = ref('')
+
+const versionOptions = computed(() => {
+  const list = [...localVersions.value]
+  const pin = form.frpc_version
+  if (pin && !list.includes(pin)) list.unshift(pin)
+  return list
+})
+
+const followLabel = computed(() =>
+  activeVersion.value ? `跟随默认（当前 v${activeVersion.value}）` : '跟随默认'
+)
+
+function missingPin(v: string) {
+  return v === form.frpc_version && !localVersions.value.includes(v)
+}
+
+async function loadVersions() {
+  try {
+    const local = await getVersionsLocal()
+    activeVersion.value = local.active || ''
+    localVersions.value = (local.versions || []).map((v) => v.version)
+  } catch {
+    localVersions.value = []
+  }
+}
 
 const transport = reactive({
   protocol: 'tcp',
@@ -337,6 +390,7 @@ function onOpen() {
     form.manage_port = inst.manage_port || undefined
     form.remark = inst.remark || ''
     form.domain = inst.domain || ''
+    form.frpc_version = inst.frpc_version || ''
     form.enabled = !!inst.enabled
     const t = inst.transport
     transport.protocol = t?.protocol || 'tcp'
@@ -361,6 +415,7 @@ function onOpen() {
     form.manage_port = undefined
     form.remark = ''
     form.domain = ''
+    form.frpc_version = ''
     form.enabled = true
     transport.protocol = 'tcp'
     transport.tcp_mux = true
@@ -376,6 +431,7 @@ function onOpen() {
     admin.password = ''
   }
   activeCollapse.value = []
+  loadVersions()
 }
 
 async function onSave() {
@@ -392,6 +448,7 @@ async function onSave() {
       manage_port: form.manage_port || 0,
       remark: form.remark.trim(),
       domain: form.domain.trim(),
+      frpc_version: form.frpc_version,
       enabled: form.enabled,
       transport: { ...transport },
       admin: { ...admin }
@@ -416,6 +473,24 @@ async function onSave() {
 <style scoped>
 .full-width {
   width: 100%;
+}
+
+.label-with-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hint-icon {
+  color: var(--el-text-color-secondary);
+  cursor: help;
+  font-size: 13px;
+}
+
+.opt-note {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .field-hint {

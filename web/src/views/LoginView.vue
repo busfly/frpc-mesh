@@ -46,18 +46,28 @@
           </el-button>
         </el-form-item>
       </el-form>
-      <div class="login-footer">部署于 NAS · 默认账号 admin，首次登录后请及时修改密码</div>
+      <div class="login-footer">
+        部署于 NAS · 默认账号 admin，首次登录后请及时修改密码
+        <div class="footer-links">
+          <span v-if="auth.version" class="mono">v{{ auth.version }}</span>
+          <span v-if="auth.version">·</span>
+          <a :href="REPO_URL" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+          <span>·</span>
+          <a :href="REPO_RELEASES_URL" target="_blank" rel="noopener noreferrer">更新日志</a>
+        </div>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Lock, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
+import { REPO_RELEASES_URL, REPO_URL } from '../api/repo'
 
 const router = useRouter()
 const route = useRoute()
@@ -74,6 +84,8 @@ const rules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 }
+
+onMounted(() => auth.fetchVersion())
 
 async function onSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
@@ -135,6 +147,24 @@ async function onSubmit() {
   border-radius: 14px;
   border: none;
   z-index: 1;
+}
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.footer-links a {
+  color: var(--el-text-color-secondary);
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--el-color-primary);
+  text-decoration: underline;
 }
 
 .login-card :deep(.el-card__body) {

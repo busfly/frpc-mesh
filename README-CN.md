@@ -2,6 +2,11 @@
 
 [English](README.md) | [中文](README-CN.md)
 
+[![Stars](https://img.shields.io/github/stars/busfly/frpc-mesh?style=flat-square)](https://github.com/busfly/frpc-mesh/stargazers)
+[![Release](https://img.shields.io/github/v/release/busfly/frpc-mesh?style=flat-square)](https://github.com/busfly/frpc-mesh/releases)
+[![License](https://img.shields.io/github/license/busfly/frpc-mesh?style=flat-square)](LICENSE)
+
+
 多实例 frp 内网穿透管理工具（WebUI），适合部署在 NAS / 软路由 / 任何 Docker 主机上。
 
 核心特性：**同时管理多台远程 frps 服务器**。每台服务器对应一个独立的 frpc 进程与配置，可同时连接多台 frps（例如家里一台、公司一台、云上一台），组成穿透"网格"，所有隧道在一个 Web 界面里统一管理。
@@ -137,6 +142,10 @@ make test   # go test ./...
 ```
 
 前端开发模式：`cd web && pnpm dev`（/api 已代理到 18080）。
+
+## 支持本项目
+
+如果 frpc-mesh 帮你省下了同时照看多个 `frpc` 进程的麻烦，欢迎 [给仓库点个 Star](https://github.com/busfly/frpc-mesh) —— 这是新用户和贡献者找到它的主要方式。Bug 与功能建议请提 [Issue](https://github.com/busfly/frpc-mesh/issues/new)。
 
 ## License
 

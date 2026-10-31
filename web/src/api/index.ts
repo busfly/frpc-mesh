@@ -1,6 +1,7 @@
 import http from './http'
 import type {
   BackupData,
+  CheckPortResult,
   Dashboard,
   Health,
   Instance,
@@ -91,6 +92,14 @@ export const apiSetProxyEnabled = (pid: number, enabled: boolean) =>
 
 export const apiDeleteProxy = (pid: number) =>
   http.delete<{ ok: boolean }>(`/proxies/${pid}`).then((r) => r.data)
+
+// 远程端口占用检测：编辑时传 exclude_proxy_id 排除自身正在用的端口
+export const apiCheckPort = (data: {
+  instance_id: number
+  type: string
+  remote_port: number
+  exclude_proxy_id?: number
+}) => http.post<CheckPortResult>('/proxies/check-port', data).then((r) => r.data)
 
 // 设置
 export const apiGetSettings = () => http.get<Settings>('/settings').then((r) => r.data)

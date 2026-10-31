@@ -25,6 +25,8 @@ export interface InstanceRuntime {
   started_at: string
   uptime_seconds: number
   last_error: string
+  /** 该实例当前进程实际使用的 frpc 版本 */
+  frpc_version?: string
 }
 
 export interface Instance {
@@ -37,6 +39,8 @@ export interface Instance {
   manage_port: number
   remark: string
   domain: string
+  /** 指定的 frpc 版本，空串表示跟随全局默认版本 */
+  frpc_version: string
   enabled: boolean
   transport?: Transport | null
   admin?: AdminApi | null
@@ -78,6 +82,13 @@ export interface ProxyPingResult {
   name: string
   type: string
   latency_ms: number
+}
+
+/** 远程端口占用检测：unknown 表示探测不通/udp 无法探测，不阻断保存 */
+export interface CheckPortResult {
+  state: 'free' | 'occupied' | 'unknown'
+  holder: string
+  note: string
 }
 
 
