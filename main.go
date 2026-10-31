@@ -27,7 +27,7 @@ import (
 var webDist embed.FS
 
 // Version 构建期由 make release 注入（-X main.Version=1.0.1，不带 v 前缀），开发构建保留默认值
-var Version = "1.0.0"
+var Version = "1.0.1"
 
 func main() {
 	var httpAddr, dataDir string

@@ -1,7 +1,7 @@
 .PHONY: build dev docker web test release
 
 GO        ?= go
-VERSION   ?= 1.0.0
+VERSION   ?= 1.0.1
 PLATFORMS = linux-arm64 linux-amd64 darwin-arm64
 # 版本号注入二进制：--version 自检与网页端「当前版本」都取这个值
 LDFLAGS   = -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
@@ -41,6 +41,7 @@ release:
 		tar czf dist/$$name.tar.gz -C dist/.stage $$name || exit 1; \
 	done
 	@rm -rf dist/.stage
+	docker build --build-arg VERSION=$(VERSION) -t frpc-mesh:latest .
 	docker save frpc-mesh:latest | gzip > dist/frpc-mesh-v$(VERSION)-docker-linux-arm64.tar.gz
 	@cd dist && { sha256sum frpc-mesh-v$(VERSION)-*.tar.gz 2>/dev/null || shasum -a 256 frpc-mesh-v$(VERSION)-*.tar.gz; } > sha256sums.txt
 	@echo '--- sha256sums.txt（一键升级依赖此文件，须与安装包一起上传 Release）---'
