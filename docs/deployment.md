@@ -26,7 +26,7 @@ volumes:
 ## 二、导入镜像包（无源码 / 离线环境）
 
 ```bash
-gunzip -c frpc-mesh-v1.0.0-docker-linux-arm64.tar.gz | docker load
+gunzip -c frpc-mesh-vX.Y.Z-docker-linux-arm64.tar.gz | docker load   # vX.Y.Z = 你下载的包版本
 docker run -d --name frpc-mesh --restart unless-stopped \
   --add-host host.docker.internal:host-gateway \
   -p 18080:18080 -v /path/on/host/frpc-mesh/data:/data frpc-mesh:latest
@@ -38,8 +38,8 @@ docker run -d --name frpc-mesh --restart unless-stopped \
 ## 三、普通运行包（无 Docker）
 
 ```bash
-tar xzf frpc-mesh-v1.0.0-linux-arm64.tar.gz
-cd frpc-mesh-v1.0.0-linux-arm64
+tar xzf frpc-mesh-vX.Y.Z-linux-arm64.tar.gz
+cd frpc-mesh-vX.Y.Z-linux-arm64
 ./start.sh                        # 前台运行，Ctrl+C 停止
 nohup ./start.sh > frpc-mesh.out 2>&1 &   # 或后台
 ```

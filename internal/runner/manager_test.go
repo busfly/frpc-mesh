@@ -353,3 +353,23 @@ func TestReconcileRetriesAfterFailureMarkCleared(t *testing.T) {
 		t.Errorf("清除失败标记后应重试补下载，实际 %v", calls)
 	}
 }
+
+// 启动失败留下的错误占位没有 cmd/done，Stop 若在 nil channel 上等退出会永久卡死
+// （重启全部实例、优雅关停、停止按钮都会走到这里）
+func TestStopOnFailedStartTombstoneReturns(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.mu.Lock()
+	m.procs[42] = &proc{status: StatusError, lastError: "未找到 frpc 二进制"}
+	m.mu.Unlock()
+
+	done := make(chan error, 1)
+	go func() { done <- m.Stop(42) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Stop 应无错返回，实际 %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop 在错误占位实例上卡死")
+	}
+}

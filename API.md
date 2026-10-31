@@ -40,7 +40,7 @@
 - `GET /api/instances/{id}/config` → `{"toml":"serverAddr = ...\n..."}`（生成的 frpc TOML 预览）
 - `GET /api/instances/{id}/proxies/online` → `{"online_ids":[1,2,3]}`（在线隧道 ID；判定 = frpc 日志确认隧道建立 + 本地目标数据层可达，visitor/udp 只看隧道）
 
-新建/保存实例时若 `frpc_version` 不是 `x.y.z` 形式返回 400；保存后若该版本本地尚未下载，会**异步补下载**（见「frpc 版本管理」的补下载语义），不阻塞保存、不把失败报给前端。
+新建/保存实例时若 `frpc_version` 不是 `x.y.z` 形式返回 400；保存后若该服务器**已启用**且指定版本本地尚未下载，会**异步补下载**（见「frpc 版本管理」的补下载语义），不阻塞保存、不把失败报给前端；禁用状态的服务器不触发补下载。
 
 ### instance 对象
 ```json
@@ -91,7 +91,7 @@
 - `GET /api/instances/{id}/proxies` → `[proxy]`（含 kind=proxy 与 kind=visitor）
 - `POST /api/instances/{id}/proxies` `{proxy}` → `proxy` (201)（若实例进程在跑会自动重启生效）
 - `PUT /api/proxies/{pid}` `{proxy}` → `proxy`
-- `PUT /api/proxies/{pid}/enabled` `{"enabled":true}` → `proxy`（启用/禁用；启用时同样做远程端口占用校验，占用返回 400）
+- `PUT /api/proxies/{pid}/enabled` `{"enabled":true}` → `{"ok":true}`（启用/禁用；启用时同样做远程端口占用校验，占用返回 400）
 - `DELETE /api/proxies/{pid}` → `{"ok":true}`
 - `POST /api/proxies/check-port` `{"instance_id":1,"type":"tcp","remote_port":6000,"exclude_proxy_id":7}` →
 ```json
@@ -102,7 +102,7 @@
 }
 ```
   判定顺序：先在**同一台 frps**（`server_addr`+`server_port` 相同）、**同协议**、已启用的代理里查同名远程端口（tcp 与 udp 端口空间互不影响，故只在同协议内比对），命中即 `occupied`；未命中且是 tcp 时再对 `server_addr:remote_port` 做一次 2 秒连接探测——连上即 `occupied`（`exclude_proxy_id` 用于编辑时排除自己：若唯一占用者就是被排除的那条且其实例正在运行，则视为 `free`），连接被拒绝即 `free`，其它网络错误（超时、DNS 失败、frps 不可达）为 `unknown`。udp 从不探测，只比对本机配置，因此无冲突时返回 `unknown`（`note` 说明原因）；非 tcp/udp 类型同样返回 `unknown`。**`unknown` 不阻断保存**，只有 `occupied` 阻断。`instance_id` 不存在、`remote_port` 不在 1-65535 返回 400。
-- 保存（新建/编辑）与启用兜底：`remote_port > 0` 且同机同协议存在**已启用**的同端口代理时返回 400（编辑时排除自身），错误信息指明占用方；前端「保存并应用」在未手动检测过时会先调一次 check-port，`occupied` 则不发出保存请求
+- 保存（新建/编辑）与启用兜底：`remote_port > 0`、该代理自身启用、且同机同协议存在**已启用**的同端口代理时返回 400（编辑时排除自身，不做网络探测），错误信息为「远程端口 N 已被代理「x」占用」（只点名代理，不含服务器名）；前端「保存并应用」在未手动检测过时会先调一次 check-port，`occupied` 则不发出保存请求
 
 ### proxy 对象
 ```json
@@ -164,7 +164,7 @@ visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors
 - `DELETE /api/frpc/versions/{version}` → `{"ok":true}`（删除本地二进制；生效中的默认版本拒绝删除。被某台服务器 pin 的版本删掉后，下次启动服务或保存该服务器时会自动补下载并切回）
 
 ### 服务器级版本与补下载
-实例的 `frpc_version` 非空即 pin 一个版本，此时该实例的生效顺序是：pin 且已下载 → 用 pin 版本；pin 但本地没有 → **先用默认版本启动**，服务启动完成（`StartEnabled`）或保存该服务器后再异步补下载；下载成功 → 自动重启 pin 该版本的运行中实例（隧道中断数秒后自恢复，与重启语义一致）；下载失败（含该版本已从远程消失）→ 不重试、不报错给前端，保持默认版本，等下次进程启动或保存服务器时再试（保存服务器会清除失败标记，给用户一个手动重试的入口）。`runtime.frpc_version` 始终反映**进程实际运行**的版本，因此 pin 未到位时前端显示「v9.9.9 · 暂用 v0.61.1」这类回退标签。
+实例的 `frpc_version` 非空即 pin 一个版本，此时该实例的生效顺序是：pin 且已下载 → 用 pin 版本；pin 但本地没有 → **先用默认版本启动**，服务启动完成（`StartEnabled`）或保存该服务器后再异步补下载；下载成功 → 自动重启 pin 该版本的运行中实例（隧道中断数秒后自恢复，与重启语义一致）；下载失败（含该版本已从远程消失）→ 不重试、不报错给前端，保持默认版本，等下次**启动 frpc-mesh 服务**或保存这台服务器时再试（保存会清除失败标记，这是手动重试入口；单独重启那台服务器不触发）。补下载只覆盖**已启用**的服务器。`runtime.frpc_version` 始终反映**进程实际运行**的版本，因此 pin 未到位时前端显示「v9.9.9 · 暂用 v0.61.1」这类回退标签。
 
 ## frpc-mesh 自更新
 检测本工具自身在 GitHub Releases 上的新版本，并在**非容器**环境支持一键升级。

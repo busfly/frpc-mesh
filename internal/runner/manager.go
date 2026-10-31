@@ -490,7 +490,9 @@ func (m *Manager) Stop(id int64) error {
 		return nil
 	}
 	p.mu.Lock()
-	if p.status == StatusStopped || p.status == StatusStopping {
+	// done 为 nil 的是启动失败留下的错误占位（StartEnabled 里造的 tombstone）：
+	// 没有进程可停，收到 nil channel 会永久阻塞，直接当作已停止返回
+	if p.status == StatusStopped || p.status == StatusStopping || p.done == nil {
 		p.mu.Unlock()
 		return nil
 	}

@@ -26,7 +26,7 @@ import (
 //go:embed all:web/dist
 var webDist embed.FS
 
-// Version 构建期由 make release 注入（-X main.Version=1.0.1，不带 v 前缀），开发构建保留默认值
+// Version 构建期由 make release 注入（-X main.Version=1.1.0，不带 v 前缀），开发构建保留默认值
 var Version = "1.1.0"
 
 func main() {
