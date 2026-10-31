@@ -27,24 +27,28 @@ type Runtime struct {
 	StartedAt     string `json:"started_at"`
 	UptimeSeconds int64  `json:"uptime_seconds"`
 	LastError     string `json:"last_error"`
+	// FrpcVersion 该实例当前进程实际使用的 frpc 版本
+	FrpcVersion string `json:"frpc_version"`
 }
 
 type Instance struct {
-	ID         int64     `json:"id"`
-	Name       string    `json:"name"`
-	ServerAddr string    `json:"server_addr"`
-	ServerPort int       `json:"server_port"`
-	AuthMethod string    `json:"auth_method"`
-	AuthToken  string    `json:"auth_token"`
-	ManagePort int       `json:"manage_port"`
-	Remark     string    `json:"remark"`
-	Domain     string    `json:"domain"`
-	Enabled    bool      `json:"enabled"`
-	Transport  Transport `json:"transport"`
-	AdminCfg   Admin     `json:"admin"`
-	CreatedAt  string    `json:"created_at"`
-	UpdatedAt  string    `json:"updated_at"`
-	Runtime    *Runtime  `json:"runtime,omitempty"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	ServerAddr string `json:"server_addr"`
+	ServerPort int    `json:"server_port"`
+	AuthMethod string `json:"auth_method"`
+	AuthToken  string `json:"auth_token"`
+	ManagePort int    `json:"manage_port"`
+	Remark     string `json:"remark"`
+	Domain     string `json:"domain"`
+	// FrpcVersion 为空表示跟随全局默认版本
+	FrpcVersion string    `json:"frpc_version"`
+	Enabled     bool      `json:"enabled"`
+	Transport   Transport `json:"transport"`
+	AdminCfg    Admin     `json:"admin"`
+	CreatedAt   string    `json:"created_at"`
+	UpdatedAt   string    `json:"updated_at"`
+	Runtime     *Runtime  `json:"runtime,omitempty"`
 }
 
 type Proxy struct {
@@ -80,7 +84,6 @@ type Settings struct {
 	AutoUpdateCheck bool   `json:"auto_update_check"`
 	Version         string `json:"version,omitempty"`
 }
-
 
 // BackupInstance 备份文件中的单个服务器及其代理
 type BackupInstance struct {
