@@ -3,12 +3,17 @@ package logging
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // RotatingWriter 写入 <dir>/<name>：单文件超过 maxSize 时滚动为 .1 … .maxFiles，
 // 超出份数的最旧文件被删除。写入不经缓冲，进程退出无需显式关闭。
+//
+// 非并发安全：仅作为 stdlib log 的 output 使用（log 包内部串行化所有写入），
+// 不要把它直接交给多个 goroutine 并发写。
 type RotatingWriter struct {
 	dir      string
 	name     string
@@ -16,16 +21,27 @@ type RotatingWriter struct {
 	maxFiles int
 	f        *os.File
 	size     int64
+	// 落盘失败只提示一次：stdout 那份始终完整，重复刷屏反而盖掉有用日志
+	warnOnce sync.Once
+	warnOut  io.Writer
 }
 
 func NewRotatingWriter(dir, name string, maxSize int64, maxFiles int) *RotatingWriter {
-	return &RotatingWriter{dir: dir, name: name, maxSize: maxSize, maxFiles: maxFiles}
+	return &RotatingWriter{dir: dir, name: name, maxSize: maxSize, maxFiles: maxFiles, warnOut: os.Stderr}
 }
 
 func (w *RotatingWriter) path() string { return filepath.Join(w.dir, w.name) }
 
-// Write 实现 io.Writer。目录/文件在首次写入时创建，失败向上返回错误由调用方降级。
+// Write 实现 io.Writer。目录/文件在首次写入时创建，失败向上返回错误并提示一次。
 func (w *RotatingWriter) Write(p []byte) (int, error) {
+	n, err := w.write(p)
+	if err != nil {
+		w.warn(err)
+	}
+	return n, err
+}
+
+func (w *RotatingWriter) write(p []byte) (int, error) {
 	if err := w.ensureOpen(); err != nil {
 		return 0, err
 	}
@@ -85,4 +101,14 @@ func (w *RotatingWriter) rotate() error {
 		return fmt.Errorf("滚动日志失败: %w", err)
 	}
 	return nil
+}
+
+func (w *RotatingWriter) warn(err error) {
+	w.warnOnce.Do(func() {
+		out := w.warnOut
+		if out == nil {
+			out = os.Stderr
+		}
+		fmt.Fprintf(out, "警告: 运行日志落盘失败（%v），后续不再重复提示；标准输出仍有完整日志\n", err)
+	})
 }

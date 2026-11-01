@@ -103,22 +103,15 @@ func (u *Upgrader) CapabilityFor(latestVer string, assets []Asset) Capability {
 		cap.Reason = "尚未检查到可用版本"
 		return cap
 	}
-	var found, hasSum bool
-	for _, a := range assets {
-		if a.Name == asset {
-			found = true
-		}
-		if a.Name == checksums {
-			hasSum = true
-		}
-	}
+	found := hasAsset(assets, asset)
+	hasSum := hasAsset(assets, checksums)
 	cap.HasChecksum = hasSum
 	if inContainer() {
 		cap.Mode = "container"
 		cap.Reason = "检测到运行在容器中：容器内替换的二进制会在镜像重建时丢失，请改用新的镜像包再重建容器"
 		// 已是最新（或本地版本更新，如源码构建）时不给引导，否则等于引导用户装回旧版本
 		if hasUpdate(u.c.current, latestVer) {
-			cap.Guide = buildGuide(latestVer, runtime.GOARCH)
+			cap.Guide = buildGuide(latestVer, runtime.GOARCH, assets)
 		}
 		return cap
 	}

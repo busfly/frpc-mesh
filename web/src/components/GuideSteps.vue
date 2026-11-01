@@ -6,7 +6,14 @@
         <el-tag v-if="s.optional" size="small" type="info" effect="plain">可选</el-tag>
       </div>
       <p v-if="s.desc" class="step-desc">{{ s.desc }}</p>
-      <a v-if="s.link" class="step-link" :href="s.link.url" @click="onLink($event, s.link?.url)">
+      <a
+        v-if="s.link"
+        class="step-link"
+        :href="s.link.url"
+        :target="s.link.url.startsWith('#') ? undefined : '_blank'"
+        rel="noopener noreferrer"
+        @click="onLink($event, s.link?.url)"
+      >
         {{ s.link.label }}
       </a>
       <template v-for="(c, ci) in s.commands || []" :key="ci">

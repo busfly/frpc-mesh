@@ -35,9 +35,22 @@ type UpgradeGuide struct {
 	Note     string      `json:"note"`
 }
 
-// buildGuide 按目标版本与容器架构生成引导；latestVer 非 x.y.z 时返回 nil，
-// 宁可没有引导也不把来路不明的字符串拼进可复制命令
-func buildGuide(latestVer, arch string) *UpgradeGuide {
+// dockerAssetName 是该版本的 arm64 镜像包名（Release 资产名）
+func dockerAssetName(ver string) string { return fmt.Sprintf(dockerAsset, ver) }
+
+func hasAsset(assets []Asset, name string) bool {
+	for _, a := range assets {
+		if a.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// buildGuide 按目标版本、容器架构与该版本已发布的安装包生成引导；latestVer 非 x.y.z 时返回 nil，
+// 宁可没有引导也不把来路不明的字符串拼进可复制命令。
+// 只有 linux/arm64 且该 Release 真的带镜像包时才给下载步骤，否则退回源码构建。
+func buildGuide(latestVer, arch string, assets []Asset) *UpgradeGuide {
 	if !versionRe.MatchString(latestVer) {
 		return nil
 	}
@@ -51,8 +64,8 @@ func buildGuide(latestVer, arch string) *UpgradeGuide {
 			Commands: []string{"docker logs --tail 100 frpc-mesh"},
 		},
 	}
-	if arch == "arm64" {
-		asset := fmt.Sprintf(dockerAsset, latestVer)
+	if arch == "arm64" && hasAsset(assets, dockerAssetName(latestVer)) {
+		asset := dockerAssetName(latestVer)
 		g.Kind = "docker_image"
 		g.Steps = []GuideStep{
 			{
