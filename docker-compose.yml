@@ -18,10 +18,13 @@ services:
       # 数据挂到宿主机目录（配置/版本/生成文件全部在此，卸载 Docker 不丢，直接拷贝即备份）
       # 如需回到 Docker 命名卷方式，改回: - frpc-mesh-data:/data 并在末尾 volumes 段声明
       - /Volumes/MAC_U_202411/docker/frpc-mesh/data:/data
+      # 运行日志同时落一份到宿主机目录（不设 FRPC_MESH_LOG_DIR 时程序只写标准输出，不落文件）
+      - /Volumes/MAC_U_202411/docker/frpc-mesh/logs:/logs
       # 如需使用宿主机自备的 frpc 二进制，取消注释：
       # - /usr/local/bin/frpc:/usr/local/bin/frpc:ro
     environment:
       - TZ=Asia/Shanghai
+      - FRPC_MESH_LOG_DIR=/logs
     mem_limit: 256m
     logging:
       driver: json-file

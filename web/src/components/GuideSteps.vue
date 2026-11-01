@@ -9,16 +9,19 @@
       <a v-if="s.link" class="step-link" :href="s.link.url" @click="onLink($event, s.link?.url)">
         {{ s.link.label }}
       </a>
-      <div v-for="(c, ci) in s.commands || []" :key="ci" class="cmd-row">
-        <code class="cmd mono">{{ c }}</code>
-        <el-tooltip content="复制这条命令" placement="top">
-          <el-button class="cmd-copy" text :icon="DocumentCopy" @click="onCopy($event, c)" />
-        </el-tooltip>
-      </div>
+      <template v-for="(c, ci) in s.commands || []" :key="ci">
+        <!-- # 开头是后端的分组说明（如 compose / docker run 两套命令的分隔），不给复制按钮 -->
+        <p v-if="isCaption(c)" class="cmd-caption">{{ c }}</p>
+        <div v-else class="cmd-row">
+          <code class="cmd mono">{{ c }}</code>
+          <el-tooltip content="复制这条命令" placement="top">
+            <el-button class="cmd-copy" text :icon="DocumentCopy" @click="onCopy($event, c)" />
+          </el-tooltip>
+        </div>
+      </template>
     </li>
   </ol>
 </template>
-
 <script setup lang="ts">
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -26,6 +29,10 @@ import type { GuideStep } from '../api/types'
 import { copyText } from '../utils/clipboard'
 
 defineProps<{ steps: GuideStep[]; hideTitle?: boolean }>()
+
+function isCaption(cmd: string): boolean {
+  return cmd.trimStart().startsWith('#')
+}
 
 /** # 开头的链接是页内动作：滚动到目标卡片，不跳转 */
 function onLink(e: MouseEvent, url?: string) {
@@ -72,6 +79,12 @@ function onCopy(e: MouseEvent, cmd: string) {
   margin-top: 6px;
   font-size: 13px;
   color: var(--el-color-primary);
+}
+.cmd-caption {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
 .cmd-row {
   display: flex;

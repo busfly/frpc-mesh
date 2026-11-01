@@ -43,7 +43,7 @@ func buildGuide(latestVer, arch string) *UpgradeGuide {
 	}
 	g := &UpgradeGuide{
 		Kind:  "source_build",
-		Intro: fmt.Sprintf("升级要换一次镜像并重建容器，全程在你自己的电脑终端里执行几条命令，约 2 分钟；期间隧道会断几秒后自动恢复。本页面不能替你执行，只能把命令给你抄。命令里的容器名 frpc-mesh 按你自己的改，不确定就先执行 docker ps 看 NAME 列。当前版本 v%s。", latestVer),
+		Intro: fmt.Sprintf("升级要换一次镜像并重建容器，全程在你自己的电脑终端里执行几条命令，约 2 分钟；期间隧道会断几秒后自动恢复。本页面不能替你执行，只能把命令给你抄。命令里的容器名 frpc-mesh 按你自己的改，不确定就先执行 docker ps 看 NAME 列。本次升级到 v%s。", latestVer),
 		Note:  "配置和已下载的 frpc 版本都在宿主机目录里，重建容器不会丢；隧道会中断几秒后自动恢复。",
 		Fallback: GuideStep{
 			Title:    "万一升级失败或页面打不开怎么办",
@@ -73,14 +73,14 @@ func buildGuide(latestVer, arch string) *UpgradeGuide {
 			},
 			{
 				Title: "重建容器（二选一）",
-				Desc:  "判断方法：你放 frpc-mesh 的文件夹里有 docker-compose.yml 就用「用 compose」那两条；没有就用「用 docker run」那三条——第一条的输出里抄出你的数据目录，填到最后一条。",
+				Desc:  "判断方法：你放 frpc-mesh 的文件夹里有 docker-compose.yml 就用「用 compose」那两条；没有就用「用 docker run」那三条——先跑 inspect 那条，把输出里 `-v /宿主机路径:/data` 的路径抄到最后一条对应位置。",
 				Commands: []string{
 					"# 用 compose：cd 到你放 docker-compose.yml 的目录后执行",
 					"docker compose up -d --force-recreate",
-					"# 用 docker run：先抄出数据目录，再删旧容器并用新镜像起一个",
+					"# 用 docker run：先抄出自己的数据目录，再删旧容器并用新镜像起一个",
 					inspectMounts,
 					"docker rm -f frpc-mesh",
-					"docker run -d --name frpc-mesh --restart unless-stopped --add-host host.docker.internal:host-gateway -p 18080:18080 -v 上一步抄到的路径:/data frpc-mesh:latest",
+					"docker run -d --name frpc-mesh --restart unless-stopped --add-host host.docker.internal:host-gateway -e TZ=Asia/Shanghai -p 18080:18080 -v 抄到的数据目录路径:/data frpc-mesh:latest",
 				},
 			},
 			{

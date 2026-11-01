@@ -116,7 +116,10 @@ func (u *Upgrader) CapabilityFor(latestVer string, assets []Asset) Capability {
 	if inContainer() {
 		cap.Mode = "container"
 		cap.Reason = "检测到运行在容器中：容器内替换的二进制会在镜像重建时丢失，请改用新的镜像包再重建容器"
-		cap.Guide = buildGuide(latestVer, runtime.GOARCH)
+		// 已是最新（或本地版本更新，如源码构建）时不给引导，否则等于引导用户装回旧版本
+		if hasUpdate(u.c.current, latestVer) {
+			cap.Guide = buildGuide(latestVer, runtime.GOARCH)
+		}
 		return cap
 	}
 	if !found {
