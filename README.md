@@ -48,7 +48,7 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 <img src="docs/screenshots/proxies.png" width="900" alt="Proxies">
 
 <details>
-<summary>Remaining screens (forms / config / logs / versions / settings)</summary>
+<summary>Remaining screens (forms / config / logs / versions / settings / login)</summary>
 
 **New FRPS server** — address, token, dashboard port, domain, frpc version (empty follows the default), notes
 <img src="docs/screenshots/instance-new.png" width="900" alt="New FRPS server">

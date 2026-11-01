@@ -47,7 +47,7 @@
 <img src="docs/screenshots/proxies.png" width="900" alt="穿透代理">
 
 <details>
-<summary>展开其余界面（表单 / 配置 / 日志 / 版本 / 设置）</summary>
+<summary>展开其余界面（表单 / 配置 / 日志 / 版本 / 设置 / 登录）</summary>
 
 **新建 FRPS 服务器** — 地址、Token、管理端口、域名、frpc 版本（留空跟随默认）、备注
 <img src="docs/screenshots/instance-new.png" width="900" alt="新建 FRPS 服务器">
