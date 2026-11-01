@@ -126,7 +126,18 @@
           <div v-if="capability && info?.latest" class="update-env">
             <el-tag :type="envTagType" size="small" effect="plain">{{ envLabel }}</el-tag>
             <span class="env-reason">{{ capability.reason }}</span>
+            <el-button
+              v-if="capability.guide"
+              class="guide-toggle"
+              text
+              type="primary"
+              size="small"
+              @click="guideOpen = !guideOpen"
+            >
+              {{ guideOpen ? '收起升级步骤' : '怎么升级？看步骤' }}
+            </el-button>
           </div>
+          <UpgradeGuide v-if="guideOpen && capability?.guide" :guide="capability.guide" />
 
           <div v-if="update.running" class="upgrade-progress">
             <el-icon class="is-loading"><Loading /></el-icon>
@@ -161,7 +172,7 @@
             </el-button>
           </div>
         </el-card>
-        <el-card class="card setting-card" shadow="never">
+        <el-card id="backup" class="card setting-card" shadow="never">
           <template #header>
             <span class="card-title">备份与恢复</span>
           </template>
@@ -343,6 +354,7 @@ import {
 } from '../api'
 import type { BackupData } from '../api/types'
 import { REPO_ISSUES_URL, REPO_RELEASES_URL, REPO_URL } from '../api/repo'
+import UpgradeGuide from '../components/UpgradeGuide.vue'
 import { useAuthStore } from '../stores/auth'
 import { useInstancesStore } from '../stores/instances'
 import { useUpdateStore } from '../stores/update'
@@ -402,6 +414,8 @@ async function onSaveSettings() {
 
 const checkSource = ref<'github' | 'ghfast'>('github')
 const notesVisible = ref(false)
+// 升级步骤就地展开，不持久化：刷新后回到收起，避免卡片长期变高
+const guideOpen = ref(false)
 
 const info = computed(() => update.info)
 const capability = computed(() => update.capability)
@@ -696,8 +710,14 @@ async function onFileChange(e: Event) {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 12px;
   font-size: 13px;
+}
+
+.guide-toggle {
+  margin-left: auto;
+  font-size: 12px;
 }
 
 .env-reason {
