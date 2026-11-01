@@ -80,6 +80,9 @@ The point of "mesh": each frps entry (home, office, cloud VPS, …) gets its own
 **Settings** — default frpc version, start-on-boot, frpc-mesh version check & one-click upgrade, backup export/import, change password, links to this repository
 <img src="docs/screenshots/settings.png" width="900" alt="Settings">
 
+**Login** — version plus the GitHub repository / changelog links (the same set of links sits on the header octocat and in Settings → About)
+<img src="docs/screenshots/login.png" width="900" alt="Login">
+
 </details>
 
 ## Architecture
@@ -93,7 +96,8 @@ browser ──HTTP/JWT──▶ Go backend (net/http + SQLite + embedded fronten
 ```
 
 - Each server writes `<data dir>/configs/instance-<id>.toml` and is launched as `frpc -c <toml>`
-- Status comes from parsing frpc's own log (`login to server success` / `start proxy success` → online); tunnel details use the frpc Admin API, whose `webServer` binds to 127.0.0.1 only
+- Which frpc binary a server gets: its own pinned version (when downloaded) → the default version activated on the versions page → a frpc found on the host. A pin that is missing starts on the default while the download runs in the background, then restarts onto it automatically
+- Status: a server is online only when frpc's log confirms it (`login to server success` / `start proxy success`) *and* the local target answers a data-layer probe; tunnel details come from the frpc Admin API, whose `webServer` binds to 127.0.0.1 only
 
 ## Quick start
 

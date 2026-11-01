@@ -134,7 +134,7 @@
 visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors]]` 的 name。
 
 ## 设置
-- `GET /api/settings` → `{"auto_start":true,"auto_update_check":true,"version":"1.0.0"}`
+- `GET /api/settings` → `{"auto_start":true,"auto_update_check":true,"version":"1.1.0"}`
   - `auto_start`: 服务启动时自动拉起所有 enabled 服务器连接
   - `auto_update_check`: 后台每 6 小时联网检查 frpc-mesh 自身新版本（仅提醒，不自动下载/升级）
 - `PUT /api/settings` `{"auto_start":true,"auto_update_check":false}` → 同 GET；**字段缺省时保留原值**（外层 `*bool` 承接，不会把未提交的开关重置为默认）
@@ -171,20 +171,20 @@ visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors
 
 - `GET /api/update/status` → 见下方响应体（**不访问网络**，读上次检查的结果，秒回；页面首屏用）
 - `POST /api/update/check?source=github|ghfast` → 同响应体（**强制联网检查**：直连 `api.github.com` 失败后自动改走 `ghfast.top` 镜像，结果落盘，重启后仍在）
-- `POST /api/update/upgrade` `{"version":"1.0.1"}` → `{"state":"downloading",...}`（**异步**启动后台升级任务，立即返回；环境不允许/版本不是最新/已有任务在跑返回 400，`message` 为中文原因）
+- `POST /api/update/upgrade` `{"version":"1.1.0"}` → `{"state":"downloading",...}`（**异步**启动后台升级任务，立即返回；环境不允许/版本不是最新/已有任务在跑返回 400，`message` 为中文原因）
 - `GET /api/update/upgrade/status` → `{"state","message","from","to"}`（前端轮询直到 `error`/`restarting`；服务重启后该接口返回 `idle`）
 
 ```json
 {
   "info": {
-    "current": "1.0.0",           // 当前运行版本（构建期 -X main.Version 注入，不带 v）
-    "latest": "1.0.1",            // 最新已发布版本，空串表示还没检查过
+    "current": "1.0.1",           // 当前运行版本（构建期 -X main.Version 注入，不带 v）
+    "latest": "1.1.0",            // 最新已发布版本，空串表示还没检查过
     "has_update": true,           // 仅当两者都是 x.y.z 且 latest 更大
-    "release_name": "frpc-mesh v1.0.1",
-    "release_url": "https://github.com/busfly/frpc-mesh/releases/tag/v1.0.1",
+    "release_name": "frpc-mesh v1.1.0",
+    "release_url": "https://github.com/busfly/frpc-mesh/releases/tag/v1.1.0",
     "published_at": "2026-11-01T10:00:00Z",
     "notes": "…",                 // Release 正文，截断到 4KB
-    "assets": [{"name":"frpc-mesh-v1.0.1-linux-arm64.tar.gz","size_bytes":14048894,"url":"https://github.com/…"}],
+    "assets": [{"name":"frpc-mesh-v1.1.0-linux-arm64.tar.gz","size_bytes":14048894,"url":"https://github.com/…"}],
     "checked_at": "2026-11-01T18:00:00+08:00",  // 空串表示从未检查
     "source": "github",           // github | ghfast
     "error": "",                  // 本次检查失败原因（成功时为空）
@@ -194,12 +194,12 @@ visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors
     "can_upgrade": true,
     "mode": "binary",             // binary 可就地升级 | container 容器内不自动替换 | unsupported 需手动
     "reason": "可直接升级：替换二进制后进程自重启，隧道会中断数秒",
-    "asset_name": "frpc-mesh-v1.0.1-darwin-arm64.tar.gz",   // 按当前 GOOS/GOARCH 匹配
+    "asset_name": "frpc-mesh-v1.1.0-darwin-arm64.tar.gz",   // 按当前 GOOS/GOARCH 匹配
     "binary_path": "/path/to/frpc-mesh",
     "has_checksum": true          // Release 是否带 sha256sums.txt
   },
   "upgrade_job": {"state":"idle","message":"","from":"","to":""},
-  "last_upgrade": "1.0.0→1.0.1"   // 本进程最近一次完成的自升级，空串表示没有
+  "last_upgrade": "1.0.1→1.1.0"   // 本进程最近一次完成的自升级，空串表示没有
 }
 ```
 `can_upgrade` 判定顺序：无 latest / 容器内 / 当前平台无安装包 / 缺 `sha256sums.txt` / 二进制不可写 → 一律拒绝并给出 `reason`（宁可不升，也不替换成未经校验的文件）。
@@ -207,7 +207,7 @@ visitor 的 `type` 也取 stcp/xtcp/sudp；visitor 的 `name` 生成 `[[visitors
 下载地址跟随检查数据源：检查走过 `ghfast` 时，下载也先走镜像；默认先直连 GitHub，连不上（20 秒内无响应）才自动改走镜像，所以「检查更新」选哪个源，升级下载就走哪条路。宿主机本身需要代理才能连 GitHub 时，在启动环境里设置 `HTTPS_PROXY` 即可（走环境代理）。
 
 ## 健康检查
-- `GET /api/health` → `{"status":"ok","version":"1.0.0"}`
+- `GET /api/health` → `{"status":"ok","version":"1.1.0"}`
 
 ## 静态资源
 非 `/api` 路径返回内嵌 SPA（Vue3 history 路由，需 fallback 到 index.html）。

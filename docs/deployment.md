@@ -44,7 +44,7 @@ cd frpc-mesh-vX.Y.Z-linux-arm64
 nohup ./start.sh > frpc-mesh.out 2>&1 &   # 或后台
 ```
 
-- 包内 `./frpc` 为随包二进制（离线可用）；程序按「已激活版本 → PATH → 常见路径 → ./frpc」顺序探测
+- 包内 `./frpc` 为随包二进制（离线可用）；每台服务器按「本机指定的版本 → 版本管理页激活的默认版本 → PATH / 常见路径 / 包内 `./frpc`」顺序取二进制
 - 数据默认写在包内 `./data/`（`--data` 或环境变量 `FRPC_MESH_DATA` 可改）
 - 监听地址用 `--http` 改，默认 `0.0.0.0:18080`
 - 建议 systemd 托管：`ExecStart=/opt/frpc-mesh/frpc-mesh --data /opt/frpc-mesh/data`，`Restart=always`

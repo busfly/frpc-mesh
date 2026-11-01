@@ -79,6 +79,9 @@
 **设置** — frpc 默认版本、开机自启、frpc-mesh 版本检查与一键升级、备份导出导入、修改密码、开源仓库入口
 <img src="docs/screenshots/settings.png" width="900" alt="设置">
 
+**登录页** — 版本号与 GitHub 仓库 / 更新日志入口（顶栏 octocat 与设置「关于」是同一组链接）
+<img src="docs/screenshots/login.png" width="900" alt="登录">
+
 </details>
 
 ## 架构
@@ -92,7 +95,8 @@
 ```
 
 - 每台服务器生成 `<数据目录>/configs/instance-<id>.toml`，以 `frpc -c <toml>` 启动
-- 状态判定：解析 frpc 日志（`login to server success` / `start proxy success` → 在线）；隧道明细走 frpc Admin API（`webServer` 仅监听 127.0.0.1）
+- 每台用哪个 frpc 二进制：该服务器指定的版本（已下载）→ 版本管理页激活的默认版本 → 系统 frpc（版本探测不到则留空）；指定的还没下载时先用默认版本起，后台补下载完成后自动重启切过去
+- 状态判定：frpc 日志确认隧道建立（`login to server success` / `start proxy success`）**且**本地目标数据层可连通才算在线；隧道明细走 frpc Admin API（`webServer` 仅监听 127.0.0.1）
 
 ## 快速上手
 
