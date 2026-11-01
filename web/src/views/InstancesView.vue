@@ -40,6 +40,19 @@
             </el-tooltip>
           </template>
         </el-table-column>
+        <el-table-column label="frpc 版本" width="170">
+          <template #default="{ row }">
+            <el-tooltip
+              :disabled="!frpcVersionFallback(row, versionState)"
+              :content="FRPC_VERSION_FALLBACK_TIP"
+              placement="top"
+            >
+              <span :class="frpcVersionFallback(row, versionState) ? 'ver-fallback' : 'mono'">
+                {{ frpcVersionLabel(row, versionState) }}
+              </span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="代理（在线/总数）" width="130">
           <template #default="{ row }">
             <span :class="proxyStats[row.id]?.online ? 'cnt-on' : 'cnt-off'">
@@ -114,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, QuestionFilled } from '@element-plus/icons-vue'
@@ -123,6 +136,7 @@ import { apiListProxies, apiProxiesOnline, apiUpdateInstance } from '../api'
 import type { Instance } from '../api/types'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
+import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 
 const router = useRouter()
 const store = useInstancesStore()
@@ -151,6 +165,8 @@ async function refreshProxyCounts() {
     })
   )
 }
+
+const versionState = computed(() => store.frpcVersions)
 
 onMounted(refreshProxyCounts)
 watch(() => store.instances.map((i) => `${i.id}:${i.updated_at}`).join(','), refreshProxyCounts)
@@ -243,6 +259,11 @@ function onDelete(row: Instance) {
   display: flex;
   align-items: center;
   white-space: nowrap;
+}
+
+.ver-fallback {
+  font-size: 12px;
+  color: var(--el-color-warning);
 }
 
 .proxies-sep {

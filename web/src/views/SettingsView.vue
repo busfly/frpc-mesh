@@ -252,6 +252,36 @@
             适合部署于 NAS、软路由与任何 Docker 主机，配置与隧道数据保存于数据目录的
             SQLite 数据库，备份数据目录即完成备份。
           </div>
+          <div class="about-links">
+            <el-link
+              type="primary"
+              :underline="false"
+              :href="REPO_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              开源仓库
+            </el-link>
+            <el-link
+              type="primary"
+              :underline="false"
+              :href="REPO_ISSUES_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              提 Issue 反馈
+            </el-link>
+            <el-link
+              type="primary"
+              :underline="false"
+              :href="REPO_RELEASES_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Release 更新日志
+            </el-link>
+          </div>
+          <div class="about-star">觉得有用？去 GitHub 给个 Star，帮助更多人发现它。</div>
         </el-card>
       </el-col>
     </el-row>
@@ -312,6 +342,7 @@ import {
   getVersionsLocal
 } from '../api'
 import type { BackupData } from '../api/types'
+import { REPO_ISSUES_URL, REPO_RELEASES_URL, REPO_URL } from '../api/repo'
 import { useAuthStore } from '../stores/auth'
 import { useInstancesStore } from '../stores/instances'
 import { useUpdateStore } from '../stores/update'
@@ -783,6 +814,19 @@ async function onFileChange(e: Event) {
 .about-brand {
   font-weight: 700;
   font-size: 15px;
+}
+
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.about-star {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .about-desc {

@@ -31,15 +31,18 @@ type VersionInfo struct {
 }
 
 type ghRelease struct {
-	TagName    string `json:"tag_name"`
+	TagName     string `json:"tag_name"`
 	PublishedAt string `json:"published_at"`
-	Assets     []struct {
+	Assets      []struct {
 		Name               string `json:"name"`
 		Size               int64  `json:"size"`
 		DownloadCount      int64  `json:"download_count"`
 		BrowserDownloadURL string `json:"browser_download_url"`
 	} `json:"assets"`
 }
+
+// ValidVersion 校验 x.y.z 形式的 frpc 版本号，供 API 层拒绝非法 pin
+func ValidVersion(s string) bool { return versionRe.MatchString(s) }
 
 func (m *Manager) VersionsDir() string {
 	d := filepath.Join(m.dataDir, "versions")

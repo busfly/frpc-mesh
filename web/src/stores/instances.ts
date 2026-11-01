@@ -3,11 +3,13 @@ import { computed, ref } from 'vue'
 import {
   apiDashboard,
   apiListInstances,
+  getVersionsLocal,
   apiRestartInstance,
   apiStartInstance,
   apiStopInstance
 } from '../api'
 import type { Dashboard, Instance } from '../api/types'
+import type { VersionState } from '../utils/frpcVersion'
 
 const POLL_INTERVAL = 10000
 
@@ -22,6 +24,8 @@ export const useInstancesStore = defineStore('instances', () => {
     instances: []
   })
   const loading = ref(false)
+  // 本地 frpc 版本快照（默认版本 + 已下载列表），随实例轮询刷新，供各处版本列共用
+  const frpcVersions = ref<VersionState>({ active: '', downloaded: [] })
   // 正在执行操作的服务器 id 集合，用于按钮 loading 态
   const acting = ref<Record<number, boolean>>({})
   let timer: ReturnType<typeof setInterval> | null = null
@@ -39,6 +43,20 @@ export const useInstancesStore = defineStore('instances', () => {
       dashboard.value = dash
     } catch {
       // 静默处理
+    }
+    loadFrpcVersions()
+  }
+
+  /** 版本列要区分「指定已生效 / 指定未下载」，故与实例列表同节奏刷新 */
+  async function loadFrpcVersions() {
+    try {
+      const local = await getVersionsLocal()
+      frpcVersions.value = {
+        active: local.active || '',
+        downloaded: (local.versions || []).map((v) => v.version)
+      }
+    } catch {
+      // 保留上次结果，不打扰用户
     }
   }
 
@@ -97,6 +115,8 @@ export const useInstancesStore = defineStore('instances', () => {
 
   return {
     instances,
+    frpcVersions,
+    loadFrpcVersions,
     dashboard,
     loading,
     acting,

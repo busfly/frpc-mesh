@@ -50,6 +50,19 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="frpc 版本" width="170">
+          <template #default="{ row }">
+            <el-tooltip
+              :disabled="!rowVersionFallback(row)"
+              :content="FRPC_VERSION_FALLBACK_TIP"
+              placement="top"
+            >
+              <span :class="rowVersionFallback(row) ? 'ver-fallback' : 'mono'">
+                {{ rowVersionLabel(row) }}
+              </span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="服务器地址" min-width="170">
           <template #default="{ row }">
             <span class="mono">{{ row.server_addr }}:{{ row.server_port }}</span>
@@ -111,6 +124,7 @@ import {
 import { apiGetInstance, apiUpdateInstance } from '../api'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
+import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 import type { Dashboard, DashboardInstance } from '../api/types'
 
 const router = useRouter()
@@ -124,6 +138,19 @@ interface StatCard {
   cls: string
   icon: Component
   tip: string
+}
+
+const versionState = computed(() => store.frpcVersions)
+
+/** 仪表盘行来自 /api/dashboard（精简视图），版本信息按 id 回查完整实例 */
+function rowVersionLabel(row: DashboardInstance): string {
+  const inst = store.getInstance(row.id)
+  return inst ? frpcVersionLabel(inst, versionState.value) : ''
+}
+
+function rowVersionFallback(row: DashboardInstance): boolean {
+  const inst = store.getInstance(row.id)
+  return inst ? frpcVersionFallback(inst, versionState.value) : false
 }
 
 const statCards: StatCard[] = [
@@ -235,6 +262,11 @@ async function onToggleEnabled(row: DashboardInstance, val: boolean) {
 .card-subtitle {
   font-size: 12px;
   color: #909399;
+}
+
+.ver-fallback {
+  font-size: 12px;
+  color: var(--el-color-warning);
 }
 
 .proxies-sep {

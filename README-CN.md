@@ -2,6 +2,11 @@
 
 [English](README.md) | [中文](README-CN.md)
 
+[![Stars](https://img.shields.io/github/stars/busfly/frpc-mesh?style=flat-square)](https://github.com/busfly/frpc-mesh/stargazers)
+[![Release](https://img.shields.io/github/v/release/busfly/frpc-mesh?style=flat-square)](https://github.com/busfly/frpc-mesh/releases)
+[![License](https://img.shields.io/github/license/busfly/frpc-mesh?style=flat-square)](LICENSE)
+
+
 多实例 frp 内网穿透管理工具（WebUI），适合部署在 NAS / 软路由 / 任何 Docker 主机上。
 
 核心特性：**同时管理多台远程 frps 服务器**。每台服务器对应一个独立的 frpc 进程与配置，可同时连接多台 frps（例如家里一台、公司一台、云上一台），组成穿透"网格"，所有隧道在一个 Web 界面里统一管理。
@@ -11,17 +16,18 @@
 | 文档 | 内容 |
 |---|---|
 | [docs/deployment.md](docs/deployment.md) | 三种部署方式（compose / 镜像包 / 普通包）、运行参数、首次登录 |
-| [docs/operations.md](docs/operations.md) | 数据目录、备份恢复、账号重置、升级、安全边界、排错速查 |
+| [docs/operations.md](docs/operations.md) | 数据目录、备份恢复、账号重置、升级、frpc 版本（默认与逐台指定）、远程端口冲突、安全边界、排错速查 |
 | [API.md](API.md) | 后端 HTTP 接口契约 |
 
 ## 功能
 
-- 多 FRPS 服务器：新增/编辑/删除，每台独立启动、停止、重启，互不影响；支持备注、管理端口、域名
+- 多 FRPS 服务器：新增/编辑/删除，每台独立启动、停止、重启，互不影响；支持备注、管理端口、域名，并可为每台单独指定 frpc 版本
 - 每台服务器独立 frpc 子进程，TOML 配置自动生成（可预览），进程意外退出自动重启（连续快速退出熔断）
 - 穿透代理全局页：TCP/UDP/HTTP/HTTPS/STCP/SUDP/XTCP 类型卡片快速创建，支持带宽限制、Basic Auth、自定义域名/子域名、加密压缩、启用/禁用开关、备注
+- 远程端口防冲突：「同本地端口」一键填入，「检测」查这台 frps 上该端口是否已被本机其它代理占用或实际连通被占；保存时自动再检一次，占用则阻断保存并提示改端口
 - 隧道在线判定：日志关键字 + 本地目标数据层探测双重确认；「全部 Ping」并行测延迟
 - 高级传输参数：STUN、心跳/保活/tcpMux/连接池等，默认值已按实测稳定性预设
-- **frpc 版本管理**：在线扫描 GitHub Releases（官方/ghfast 镜像双数据源），下载指定版本、一键切换并自动重启运行中的 frpc 在线生效
+- **frpc 版本管理**：在线扫描 GitHub Releases（官方/ghfast 镜像双数据源），下载指定版本、一键切换并自动重启运行中的 frpc 在线生效；全局切换的是**默认版本**，服务器可各自 pin 一个版本，缺失时先用默认版本启动、后台补下载完成后自动重启切换
 - **自身版本更新**：检查 frpc-mesh 在 GitHub Releases 的最新版本并在顶栏提醒（双数据源、可定时自动检查）；二进制运行时支持就地升级（sha256 校验 + 新包自检 + 保留 `.bak` 回滚，隧道中断数秒后自动恢复），容器内运行则只提示换镜像重建
 - 配置备份：导出/导入 JSON（服务器+代理全量，导入即覆盖恢复）
 - 实时状态自愈回刷、JWT 登录认证、登录失败分级锁定防爆破
@@ -29,21 +35,21 @@
 
 ## 界面预览
 
-> 截图全部来自一套**虚构的演示数据**（`127.0.0.1:7600`、`frps-demo.example.com`、`demo-token-2026`、`nas-ssh` 等），不含任何真实服务器信息。
+> 截图全部来自一套**虚构的演示数据**（`127.0.0.1:7600`、`frps-demo.example.com` / `frps-hz.example.com` / `frps-jp.example.com`、`demo-token-2026`、`nas-ssh` 等），不含任何真实服务器信息。
 
-**仪表盘** — 多台 frps 的连接状态与在线汇总
+**仪表盘** — 多台 frps 的连接状态、每台的 frpc 生效版本与在线汇总
 <img src="docs/screenshots/dashboard.png" width="900" alt="仪表盘">
 
-**FRPS 服务器** — 逐台状态、在线代理数、启用开关与重启/管理/编辑/删除
+**FRPS 服务器** — 逐台状态、frpc 版本（默认 / 已 pin / pin 未下载时暂用默认）、在线代理数、启用开关与重启/管理/编辑/删除
 <img src="docs/screenshots/instances.png" width="900" alt="FRPS 服务器">
 
-**穿透代理** — 按服务器分 Tab，类型卡片创建，在线状态与「全部 Ping」延迟
+**穿透代理** — 按服务器分 Tab（Tab 上带 frpc 版本），类型卡片创建，在线状态与「全部 Ping」延迟
 <img src="docs/screenshots/proxies.png" width="900" alt="穿透代理">
 
 <details>
-<summary>展开其余界面（表单 / 配置 / 日志 / 版本 / 设置）</summary>
+<summary>展开其余界面（表单 / 配置 / 日志 / 版本 / 设置 / 登录）</summary>
 
-**新建 FRPS 服务器** — 地址、Token、管理端口、域名、备注
+**新建 FRPS 服务器** — 地址、Token、管理端口、域名、frpc 版本（留空跟随默认）、备注
 <img src="docs/screenshots/instance-new.png" width="900" alt="新建 FRPS 服务器">
 
 **传输 transport** — 协议、tcpMux、连接池、心跳、TLS
@@ -52,13 +58,13 @@
 **Admin API** — 本机 frpc 管理端口，用于隧道明细
 <img src="docs/screenshots/instance-adminapi.png" width="900" alt="Admin API">
 
-**新建 TCP 代理** — 本地地址可一键填入宿主机地址
+**新建 TCP 代理** — 本地地址可一键填入宿主机地址；远程端口可「同本地端口」，「检测」会给出占用方提示
 <img src="docs/screenshots/proxy-new-tcp.png" width="900" alt="新建 TCP 代理">
 
 **新建 HTTP 代理** — 自定义域名 / 子域名 / 路径 / Basic Auth
 <img src="docs/screenshots/proxy-new-http.png" width="900" alt="新建 HTTP 代理">
 
-**编辑代理** — 启用开关、加密压缩、带宽限制
+**编辑代理** — 启用开关、远程端口检测、加密压缩、带宽限制
 <img src="docs/screenshots/proxy-edit.png" width="900" alt="编辑代理">
 
 **配置文件预览** — 后端自动生成的 frpc TOML（只读、可复制）
@@ -67,11 +73,14 @@
 **运行日志** — 最近 500 行 frpc 输出，可自动刷新与清空
 <img src="docs/screenshots/run-logs.png" width="900" alt="运行日志">
 
-**frpc 版本管理** — 在线拉取 Releases、下载并一键切换
+**frpc 版本管理** — 在线拉取 Releases、下载并一键切换默认版本；服务器 pin 的版本若被删除，下次启动或保存该服务器时自动补回
 <img src="docs/screenshots/versions.png" width="900" alt="frpc 版本管理">
 
-**设置** — frpc 生效版本、开机自启、frpc-mesh 版本检查与一键升级、备份导出导入、修改密码
+**设置** — frpc 默认版本、开机自启、frpc-mesh 版本检查与一键升级、备份导出导入、修改密码、开源仓库入口
 <img src="docs/screenshots/settings.png" width="900" alt="设置">
+
+**登录页** — 版本号与 GitHub 仓库 / 更新日志入口（顶栏 octocat 与设置「关于」是同一组链接）
+<img src="docs/screenshots/login.png" width="900" alt="登录">
 
 </details>
 
@@ -86,7 +95,8 @@
 ```
 
 - 每台服务器生成 `<数据目录>/configs/instance-<id>.toml`，以 `frpc -c <toml>` 启动
-- 状态判定：解析 frpc 日志（`login to server success` / `start proxy success` → 在线）；隧道明细走 frpc Admin API（`webServer` 仅监听 127.0.0.1）
+- 每台用哪个 frpc 二进制：该服务器指定的版本（已下载）→ 版本管理页激活的默认版本 → 系统 frpc（版本探测不到则留空）；指定的还没下载时先用默认版本起，后台补下载完成后自动重启切过去
+- 状态判定：frpc 日志确认隧道建立（`login to server success` / `start proxy success`）**且**本地目标数据层可连通才算在线；隧道明细走 frpc Admin API（`webServer` 仅监听 127.0.0.1）
 
 ## 快速上手
 
@@ -97,10 +107,10 @@ docker compose up -d --build     # 详见 docs/deployment.md（先按需改 comp
 
 使用流程：
 
-1. **FRPS 服务器**页 → 新建服务器：填 frps 的 server_addr / server_port / token，启动
-2. **穿透代理**页 → 类型卡片添加代理：填本地 IP:端口、远程端口
+1. **FRPS 服务器**页 → 新建服务器：填 frps 的 server_addr / server_port / token，可按需为这台指定 frpc 版本（留空用默认），启动
+2. **穿透代理**页 → 类型卡片添加代理：填本地 IP:端口、远程端口（可「同本地端口」，不确定就点「检测」）
 3. 在同一页查看在线状态/延迟，「全部 Ping」测连通；「配置文件」「日志」按钮排查问题
-4. **设置**页确认 frpc 路径、开启开机自启、备份导出/导入
+4. **设置**页确认 frpc 默认版本、开启开机自启、备份导出/导入
 
 容器内穿透宿主机服务时，代理"本地 IP"填 `host.docker.internal`（表单有快捷芯片）；`127.0.0.1` 指向的是容器自身。
 
@@ -137,6 +147,10 @@ make test   # go test ./...
 ```
 
 前端开发模式：`cd web && pnpm dev`（/api 已代理到 18080）。
+
+## 支持本项目
+
+如果 frpc-mesh 帮你省下了同时照看多个 `frpc` 进程的麻烦，欢迎 [给仓库点个 Star](https://github.com/busfly/frpc-mesh) —— 这是新用户和贡献者找到它的主要方式。Bug 与功能建议请提 [Issue](https://github.com/busfly/frpc-mesh/issues/new)。
 
 ## License
 

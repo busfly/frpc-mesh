@@ -101,15 +101,27 @@
 
         <!-- tcp / udp：远程端口 -->
         <el-form-item v-if="form.type === 'tcp' || form.type === 'udp'" label="远程端口" prop="remote_port">
-          <el-input-number
-            v-model="form.remote_port"
-            :min="0"
-            :max="65535"
-            :controls="false"
-            class="full-width"
-            placeholder="服务端暴露的端口"
-          />
-          <div class="field-tip">frps 侧对外暴露的端口，0 表示随机分配</div>
+          <div class="remote-port-row">
+            <el-input-number
+              v-model="form.remote_port"
+              :min="0"
+              :max="65535"
+              :controls="false"
+              class="remote-port-input"
+              placeholder="服务端暴露的端口"
+            />
+            <el-button :disabled="!localPortValid" @click="copyLocalPort">同本地端口</el-button>
+            <el-tooltip
+              placement="top"
+              content="查这台服务端是否已占用该端口：先看本机其它代理配置，再对服务端做一次连接探测（udp 无法探测，仅比对本机配置）"
+            >
+              <el-button :loading="checking" @click="checkPort">检测</el-button>
+            </el-tooltip>
+          </div>
+          <el-tag v-if="portCheckView" :type="portCheckView.type" size="small" effect="plain">
+            {{ portCheckView.text }}
+          </el-tag>
+          <div class="field-tip">frps 侧对外暴露的端口，0 表示随机分配；保存时会自动检测一次</div>
         </el-form-item>
 
         <!-- http / https：域名 / 子域名 / 路径 / Basic Auth -->
@@ -244,8 +256,8 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { apiCreateProxy, apiUpdateProxy, getNetHints } from '../api'
-import type { NetHints, Proxy } from '../api/types'
+import { apiCheckPort, apiCreateProxy, apiUpdateProxy, getNetHints } from '../api'
+import type { CheckPortResult, NetHints, Proxy } from '../api/types'
 import { proxyTypeLabel } from '../utils/status'
 
 const props = defineProps<{
@@ -416,6 +428,8 @@ const rules = computed<FormRules>(() => ({
 }))
 
 function onOpen() {
+  portCheck.value = null
+  checkedKey.value = ''
   loadNetHints()
   formRef.value?.clearValidate()
   // 编辑已有记录时按其 kind 回填为提供方/访问方模式
@@ -470,9 +484,72 @@ function onOpen() {
   }
 }
 
+/** 端口检测：结果只在参数未变时有效，改端口/换类型即作废 */
+const checking = ref(false)
+const portCheck = ref<CheckPortResult | null>(null)
+const checkedKey = ref('')
+
+const localPortValid = computed(() => {
+  const lp = form.local_port
+  return Number.isInteger(lp) && (lp as number) > 0 && (lp as number) <= 65535
+})
+
+function portKey() {
+  return `${props.instanceId}:${form.type}:${form.remote_port ?? 0}`
+}
+
+const portCheckView = computed(() => {
+  if (!portCheck.value || checkedKey.value !== portKey()) return null
+  if (portCheck.value.state === 'free') return { type: 'success' as const, text: '端口空闲' }
+  if (portCheck.value.state === 'occupied') {
+    return { type: 'danger' as const, text: `已被占用：${portCheck.value.holder}` }
+  }
+  return { type: 'info' as const, text: portCheck.value.note || '无法判定' }
+})
+
+async function checkPort(): Promise<CheckPortResult | null> {
+  const port = form.remote_port
+  if (!port || port <= 0) {
+    ElMessage.warning('请先填写远程端口')
+    return null
+  }
+  checking.value = true
+  try {
+    const res = await apiCheckPort({
+      instance_id: props.instanceId,
+      type: form.type,
+      remote_port: port,
+      exclude_proxy_id: isEdit.value ? props.proxy?.id : undefined
+    })
+    portCheck.value = res
+    checkedKey.value = portKey()
+    if (res.state === 'occupied') ElMessage.error(`远程端口 ${port} 已被占用：${res.holder}`)
+    else if (res.state === 'free') ElMessage.success(`远程端口 ${port} 可用`)
+    else ElMessage.info(res.note || '无法判定端口占用情况')
+    return res
+  } catch {
+    return null
+  } finally {
+    checking.value = false
+  }
+}
+
+function copyLocalPort() {
+  if (localPortValid.value) form.remote_port = form.local_port as number
+}
+
 async function onSave() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  if ((form.type === 'tcp' || form.type === 'udp') && (form.remote_port ?? 0) > 0) {
+    // 参数没变就复用刚才手动检测的结果：检测出占用后直接点保存同样要拦
+    const res = checkedKey.value === portKey() ? portCheck.value : await checkPort()
+    if (res?.state === 'occupied') {
+      ElMessage.error(`远程端口 ${form.remote_port} 已被占用：${res.holder}，请换一个端口`)
+      formRef.value?.scrollToField('remote_port')
+      return
+    }
+  }
   saving.value = true
   try {
     const payload: Partial<Proxy> = {
@@ -534,6 +611,18 @@ async function onSave() {
 </script>
 
 <style scoped>
+.remote-port-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.remote-port-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .full-width {
   width: 100%;
 }

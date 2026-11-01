@@ -26,7 +26,7 @@ volumes:
 ## 二、导入镜像包（无源码 / 离线环境）
 
 ```bash
-gunzip -c frpc-mesh-v1.0.0-docker-linux-arm64.tar.gz | docker load
+gunzip -c frpc-mesh-vX.Y.Z-docker-linux-arm64.tar.gz | docker load   # vX.Y.Z = 你下载的包版本
 docker run -d --name frpc-mesh --restart unless-stopped \
   --add-host host.docker.internal:host-gateway \
   -p 18080:18080 -v /path/on/host/frpc-mesh/data:/data frpc-mesh:latest
@@ -38,13 +38,13 @@ docker run -d --name frpc-mesh --restart unless-stopped \
 ## 三、普通运行包（无 Docker）
 
 ```bash
-tar xzf frpc-mesh-v1.0.0-linux-arm64.tar.gz
-cd frpc-mesh-v1.0.0-linux-arm64
+tar xzf frpc-mesh-vX.Y.Z-linux-arm64.tar.gz
+cd frpc-mesh-vX.Y.Z-linux-arm64
 ./start.sh                        # 前台运行，Ctrl+C 停止
 nohup ./start.sh > frpc-mesh.out 2>&1 &   # 或后台
 ```
 
-- 包内 `./frpc` 为随包二进制（离线可用）；程序按「已激活版本 → PATH → 常见路径 → ./frpc」顺序探测
+- 包内 `./frpc` 为随包二进制（离线可用）；每台服务器按「本机指定的版本 → 版本管理页激活的默认版本 → PATH / 常见路径 / 包内 `./frpc`」顺序取二进制
 - 数据默认写在包内 `./data/`（`--data` 或环境变量 `FRPC_MESH_DATA` 可改）
 - 监听地址用 `--http` 改，默认 `0.0.0.0:18080`
 - 建议 systemd 托管：`ExecStart=/opt/frpc-mesh/frpc-mesh --data /opt/frpc-mesh/data`，`Restart=always`

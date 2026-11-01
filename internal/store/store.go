@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS instances(
   transport TEXT NOT NULL DEFAULT '{}',
   admin TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  frpc_version TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS proxies(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,6 +134,7 @@ func (s *Store) migrateV2() error {
 	hasMp := false
 	hasInstRemark := false
 	hasDomain := false
+	hasFrpcVer := false
 	for rows2.Next() {
 		var cid int
 		var name, typ string
@@ -151,6 +153,9 @@ func (s *Store) migrateV2() error {
 		if name == "domain" {
 			hasDomain = true
 		}
+		if name == "frpc_version" {
+			hasFrpcVer = true
+		}
 	}
 	if !hasMp {
 		if _, err := s.db.Exec(`ALTER TABLE instances ADD COLUMN manage_port INTEGER NOT NULL DEFAULT 0`); err != nil {
@@ -164,6 +169,11 @@ func (s *Store) migrateV2() error {
 	}
 	if !hasDomain {
 		if _, err := s.db.Exec(`ALTER TABLE instances ADD COLUMN domain TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !hasFrpcVer {
+		if _, err := s.db.Exec(`ALTER TABLE instances ADD COLUMN frpc_version TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
@@ -236,7 +246,7 @@ func scanInstance(row interface{ Scan(...any) error }) (*model.Instance, error) 
 	var enabled int
 	var transport, admin string
 	err := row.Scan(&in.ID, &in.Name, &in.ServerAddr, &in.ServerPort, &in.AuthMethod,
-		&in.AuthToken, &enabled, &transport, &admin, &in.CreatedAt, &in.UpdatedAt, &in.ManagePort, &in.Remark, &in.Domain)
+		&in.AuthToken, &enabled, &transport, &admin, &in.CreatedAt, &in.UpdatedAt, &in.ManagePort, &in.Remark, &in.Domain, &in.FrpcVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +256,7 @@ func scanInstance(row interface{ Scan(...any) error }) (*model.Instance, error) 
 	return &in, nil
 }
 
-const instanceCols = `id,name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain`
+const instanceCols = `id,name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain,frpc_version`
 
 func (s *Store) ListInstances() ([]*model.Instance, error) {
 	rows, err := s.db.Query(`SELECT ` + instanceCols + ` FROM instances ORDER BY id`)
@@ -277,8 +287,8 @@ func (s *Store) CreateInstance(in *model.Instance) error {
 	if in.Enabled {
 		enabled = 1
 	}
-	res, err := s.db.Exec(`INSERT INTO instances(name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), now(), in.ManagePort, in.Remark, in.Domain)
+	res, err := s.db.Exec(`INSERT INTO instances(name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain,frpc_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), now(), in.ManagePort, in.Remark, in.Domain, in.FrpcVersion)
 	if err != nil {
 		return err
 	}
@@ -293,8 +303,8 @@ func (s *Store) UpdateInstance(in *model.Instance) error {
 	if in.Enabled {
 		enabled = 1
 	}
-	_, err := s.db.Exec(`UPDATE instances SET name=?,server_addr=?,server_port=?,auth_method=?,auth_token=?,enabled=?,transport=?,admin=?,updated_at=?,manage_port=?,remark=?,domain=? WHERE id=?`,
-		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), in.ManagePort, in.Remark, in.Domain, in.ID)
+	_, err := s.db.Exec(`UPDATE instances SET name=?,server_addr=?,server_port=?,auth_method=?,auth_token=?,enabled=?,transport=?,admin=?,updated_at=?,manage_port=?,remark=?,domain=?,frpc_version=? WHERE id=?`,
+		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), in.ManagePort, in.Remark, in.Domain, in.FrpcVersion, in.ID)
 	return err
 }
 

@@ -40,8 +40,10 @@ type proc struct {
 	startedAt time.Time
 	lines     []string
 	online    bool
-	proxySt   map[string]string // 代理名 → running | error | pending（源自 frpc 日志）
-	done      chan struct{}     // wait goroutine 退出时关闭
+	// frpcVersion 启动时实际使用的版本，创建后只读；空串=系统 frpc 兜底（版本未知）
+	frpcVersion string
+	proxySt     map[string]string // 代理名 → running | error | pending（源自 frpc 日志）
+	done        chan struct{}     // wait goroutine 退出时关闭
 }
 
 func (p *proc) setProxyStatus(name, st string) {
@@ -105,12 +107,29 @@ type Manager struct {
 	jobs        map[string]*downloadJob
 	remoteCache map[string]remoteCacheEntry
 	fails       map[int64]int // 连续快速退出计数（自愈熔断用）
-	store       *store.Store
-	dataDir     string
+	// downloadFailed 记录本进程内补下载已失败的 pin 版本：自动 reconcile 不再反复重试，
+	// 用户重新保存该服务器时清除标记（显式动作即重试意图）
+	downloadFailed map[string]struct{}
+	// watched 记录已挂 watcher 的版本，避免同版本多个 watcher 重复重启
+	watched map[string]struct{}
+	// downloadFunc / restartFunc / watchPoll 为可注入项，单测替换以隔离真实网络与进程（同 update 包 execFunc 套路）
+	downloadFunc func(version, source string) error
+	restartFunc  func(id int64) error
+	watchPoll    time.Duration
+	store        *store.Store
+	dataDir      string
 }
 
 func NewManager(st *store.Store, dataDir string) *Manager {
-	return &Manager{procs: map[int64]*proc{}, jobs: map[string]*downloadJob{}, remoteCache: map[string]remoteCacheEntry{}, fails: map[int64]int{}, store: st, dataDir: dataDir}
+	m := &Manager{
+		procs: map[int64]*proc{}, jobs: map[string]*downloadJob{}, remoteCache: map[string]remoteCacheEntry{},
+		fails: map[int64]int{}, downloadFailed: map[string]struct{}{}, watched: map[string]struct{}{},
+		store: st, dataDir: dataDir,
+		watchPoll: 2 * time.Second,
+	}
+	m.downloadFunc = m.StartDownload
+	m.restartFunc = m.Restart
+	return m
 }
 
 func (m *Manager) ConfigDir() string {
@@ -122,6 +141,19 @@ func (m *Manager) ConfigDir() string {
 // ResolveFrpc 返回可用的 frpc 二进制路径
 func (m *Manager) ResolveFrpc() (string, error) {
 	return m.resolveFrpcBinary()
+}
+
+// ResolveFrpcFor 按实例解析 frpc 二进制与生效版本：pin 已下载 > 默认版本已下载 > 系统兜底。
+// effective 为空串表示走的是系统 frpc 兜底，版本未知。
+func (m *Manager) ResolveFrpcFor(in *model.Instance) (path, effective string, err error) {
+	if in != nil && in.FrpcVersion != "" && m.HasVersion(in.FrpcVersion) {
+		return m.versionPath(in.FrpcVersion), in.FrpcVersion, nil
+	}
+	if v := m.ActiveVersion(); v != "" && m.HasVersion(v) {
+		return m.versionPath(v), v, nil
+	}
+	p, err := m.resolveFrpcBinary()
+	return p, "", err
 }
 
 func (m *Manager) FrpcVersion() string {
@@ -184,6 +216,7 @@ func (m *Manager) Runtime(id int64) *model.Runtime {
 	rt.Status = status
 	rt.LastError = lastErr
 	rt.PID = pid
+	rt.FrpcVersion = p.frpcVersion
 	if !startedAt.IsZero() {
 		rt.StartedAt = startedAt.UTC().Format(time.RFC3339)
 		rt.UptimeSeconds = int64(time.Since(startedAt).Seconds())
@@ -240,7 +273,7 @@ func (m *Manager) Start(in *model.Instance) error {
 	}
 	m.mu.Unlock()
 
-	frpcPath, err := m.ResolveFrpc()
+	frpcPath, effectiveVersion, err := m.ResolveFrpcFor(in)
 	if err != nil {
 		return err
 	}
@@ -274,7 +307,7 @@ func (m *Manager) Start(in *model.Instance) error {
 		return fmt.Errorf("启动 frpc 失败: %v", err)
 	}
 
-	p := &proc{cmd: cmd, cancel: cancel, status: StatusStarting, startedAt: time.Now(), done: make(chan struct{})}
+	p := &proc{cmd: cmd, cancel: cancel, status: StatusStarting, startedAt: time.Now(), done: make(chan struct{}), frpcVersion: effectiveVersion}
 	m.mu.Lock()
 	m.procs[in.ID] = p
 	m.mu.Unlock()
@@ -457,7 +490,9 @@ func (m *Manager) Stop(id int64) error {
 		return nil
 	}
 	p.mu.Lock()
-	if p.status == StatusStopped || p.status == StatusStopping {
+	// done 为 nil 的是启动失败留下的错误占位（StartEnabled 里造的 tombstone）：
+	// 没有进程可停，收到 nil channel 会永久阻塞，直接当作已停止返回
+	if p.status == StatusStopped || p.status == StatusStopping || p.done == nil {
 		p.mu.Unlock()
 		return nil
 	}
@@ -513,6 +548,112 @@ func (m *Manager) StartEnabled() {
 			m.mu.Unlock()
 		}
 		time.Sleep(300 * time.Millisecond)
+	}
+	m.ReconcilePinnedVersions()
+}
+
+// ClearPinnedDownloadFailure 清除某版本的补下载失败标记，供用户重新保存服务器时重试
+func (m *Manager) ClearPinnedDownloadFailure(version string) {
+	if version == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.downloadFailed, version)
+	m.mu.Unlock()
+}
+
+// ReconcilePinnedVersions 为启用且指定版本（pin）尚未下载的实例补下载并自动切换：
+// 同版本正在下载则跳过；下载成功后重启 pin 该版本的运行中实例（隧道中断数秒自恢复，
+// 与重启语义一致）；失败（含版本已从远程消失）不重试、不报错给前端，保持默认版本，
+// 下次进程启动或保存服务器时再 reconcile。
+func (m *Manager) ReconcilePinnedVersions() {
+	list, err := m.store.ListEnabledInstances()
+	if err != nil {
+		return
+	}
+	for _, in := range list {
+		pin := in.FrpcVersion
+		if pin == "" || m.HasVersion(pin) {
+			continue
+		}
+		m.mu.Lock()
+		_, failed := m.downloadFailed[pin]
+		m.mu.Unlock()
+		if failed {
+			continue
+		}
+		// 下载可能由用户在版本管理页手动发起：那种情况也要挂 watcher，完成后才能自动切换
+		if st, _ := m.DownloadStatus(pin); st == "downloading" {
+			m.watchPin(pin)
+			continue
+		}
+		if err := m.downloadFunc(pin, "github"); err != nil {
+			// 「正在下载中」是并发触发的正常竞态，不算失败
+			if !strings.Contains(err.Error(), "正在下载中") {
+				m.mu.Lock()
+				m.downloadFailed[pin] = struct{}{}
+				m.mu.Unlock()
+			}
+			continue
+		}
+		m.watchPin(pin)
+	}
+}
+
+// watchPin 为某版本挂一个补下载 watcher，同版本只挂一个
+func (m *Manager) watchPin(version string) {
+	m.mu.Lock()
+	if _, ok := m.watched[version]; ok {
+		m.mu.Unlock()
+		return
+	}
+	m.watched[version] = struct{}{}
+	m.mu.Unlock()
+	go func() {
+		defer func() {
+			m.mu.Lock()
+			delete(m.watched, version)
+			m.mu.Unlock()
+		}()
+		m.watchPinnedDownload(version)
+	}()
+}
+
+// watchPinnedDownload 轮询补下载任务至终态；不碰真实下载逻辑，便于单测注入
+func (m *Manager) watchPinnedDownload(version string) {
+	poll := m.watchPoll
+	if poll <= 0 {
+		poll = 2 * time.Second
+	}
+	for {
+		status, _ := m.DownloadStatus(version)
+		switch status {
+		case "downloading":
+			time.Sleep(poll)
+		case "done":
+			m.mu.Lock()
+			delete(m.downloadFailed, version)
+			m.mu.Unlock()
+			m.restartPinnedInstances(version)
+			return
+		default: // error / none：失败或任务丢失，保持默认版本不处理
+			m.mu.Lock()
+			m.downloadFailed[version] = struct{}{}
+			m.mu.Unlock()
+			return
+		}
+	}
+}
+
+func (m *Manager) restartPinnedInstances(version string) {
+	list, err := m.store.ListEnabledInstances()
+	if err != nil {
+		return
+	}
+	for _, in := range list {
+		if in.FrpcVersion == version && m.IsRunning(in.ID) {
+			_ = m.restartFunc(in.ID)
+		}
 	}
 }
 
