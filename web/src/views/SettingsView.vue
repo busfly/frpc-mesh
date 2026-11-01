@@ -127,7 +127,7 @@
             <el-tag :type="envTagType" size="small" effect="plain">{{ envLabel }}</el-tag>
             <span class="env-reason">{{ capability.reason }}</span>
             <el-button
-              v-if="capability.guide"
+              v-if="hasGuide"
               class="guide-toggle"
               text
               type="primary"
