@@ -16,6 +16,8 @@ docker compose logs -f frpc-mesh # 看日志
 - 回退命名卷方式：compose 中 volumes 改回 `frpc-mesh-data:/data` 并在末尾恢复 `volumes:` 段声明
 - Mac 上 Docker Desktop 需在 Settings → Resources → File Sharing 中包含该目录（外置盘同理）
 - 已配置 `extra_hosts: host.docker.internal:host-gateway`，Linux 容器内可用该域名访问宿主机
+- 日志与数据同风格：compose 已把宿主机 `<统一目录>/logs` 挂到容器 `/logs` 并设了 `FRPC_MESH_LOG_DIR=/logs`，所以面板运行日志会同时出现在宿主机目录里（按 10MB 滚动留 5 份）；路径同样按本机改，起容器前先 `mkdir -p`；不想落文件就不挂这个目录、不设该变量。Docker 的 Volumes 界面只显示命名卷，bind 挂载要看容器的 Mounts
+- Linux 主机（NAS）上若日志文件没生成，多半是容器用户（uid 10001）写不进该目录：宿主机执行 `sudo chown 10001:10001 <统一目录>/logs` 后重启容器即可（Mac 的 OrbStack/Docker Desktop 无此问题）
 - 镜像构建时自动尝试下载 frpc（ghfast.top 镜像 → GitHub 直连 → 跳过）；无外网环境可挂载宿主机 frpc：
 
 ```yaml
@@ -34,6 +36,8 @@ docker run -d --name frpc-mesh --restart unless-stopped \
 ```
 
 镜像为 linux/arm64（Apple Silicon 与 arm64 NAS 适用）；x86 机器用方式一源码构建或方式三普通包。
+
+- 想让运行日志也落到宿主机目录，给上面的 `docker run` 再补 `-v /path/on/host/frpc-mesh/logs:/logs -e FRPC_MESH_LOG_DIR=/logs`；不设置就只写标准输出，`docker logs frpc-mesh` 照样能看
 
 ## 三、普通运行包（无 Docker）
 
@@ -55,6 +59,7 @@ nohup ./start.sh > frpc-mesh.out 2>&1 &   # 或后台
 |---|---|---|
 | `--http` | `0.0.0.0:18080` | Web 监听地址 |
 | `--data` / `FRPC_MESH_DATA` | `./data` | 数据目录（内容结构见维护手册） |
+| `--log-dir` / `FRPC_MESH_LOG_DIR` | —（不写文件） | 运行日志同时落盘到该目录的 `frpc-mesh.log`，单文件 10MB、最多留 5 份 |
 | `--reset-password` | — | 重置 admin 密码后退出（仅本机 CLI，见维护手册） |
 
 ## 首次登录

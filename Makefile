@@ -1,7 +1,7 @@
 .PHONY: build dev docker web test release
 
 GO        ?= go
-VERSION   ?= 1.1.0
+VERSION   ?= 1.1.1
 PLATFORMS = linux-arm64 linux-amd64 darwin-arm64
 # 版本号注入二进制：--version 自检与网页端「当前版本」都取这个值
 LDFLAGS   = -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"

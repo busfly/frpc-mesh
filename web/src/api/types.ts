@@ -142,6 +142,29 @@ export interface UpdateInfo {
   auto_check: boolean
 }
 
+/** 升级引导的一步：命令与链接由后端按最新版本拼好，前端只渲染 */
+export interface GuideLink {
+  label: string
+  /** 外部下载直链；以 # 开头表示页内动作（如滚动到备份卡片） */
+  url: string
+}
+
+export interface GuideStep {
+  title: string
+  desc?: string
+  commands?: string[]
+  link?: GuideLink
+  optional?: boolean
+}
+
+export interface UpgradeGuide {
+  kind: 'docker_image' | 'source_build'
+  intro: string
+  steps: GuideStep[]
+  fallback: GuideStep
+  note: string
+}
+
 /** 当前运行环境能否一键升级：容器内只提示，二进制可就地替换 */
 export interface UpgradeCapability {
   can_upgrade: boolean
@@ -150,6 +173,8 @@ export interface UpgradeCapability {
   asset_name: string
   binary_path?: string
   has_checksum: boolean
+  /** 仅容器环境且检查到合法新版本时存在 */
+  guide?: UpgradeGuide
 }
 
 /** 升级任务状态：idle | downloading | verifying | swapping | restarting | error */

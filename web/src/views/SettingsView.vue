@@ -126,7 +126,18 @@
           <div v-if="capability && info?.latest" class="update-env">
             <el-tag :type="envTagType" size="small" effect="plain">{{ envLabel }}</el-tag>
             <span class="env-reason">{{ capability.reason }}</span>
+            <el-button
+              v-if="hasGuide"
+              class="guide-toggle"
+              text
+              type="primary"
+              size="small"
+              @click="guideOpen = !guideOpen"
+            >
+              {{ guideOpen ? '收起升级步骤' : '怎么升级？看步骤' }}
+            </el-button>
           </div>
+          <UpgradeGuide v-if="guideOpen && capability?.guide" :guide="capability.guide" />
 
           <div v-if="update.running" class="upgrade-progress">
             <el-icon class="is-loading"><Loading /></el-icon>
@@ -151,7 +162,9 @@
             >
               检查更新
             </el-button>
+            <!-- 容器环境有分步引导时不再放这个点不动的主按钮：入口只留「怎么升级？看步骤」 -->
             <el-button
+              v-if="!hasGuide"
               type="primary"
               :loading="updateBusy"
               :disabled="!canUpgradeNow"
@@ -161,7 +174,7 @@
             </el-button>
           </div>
         </el-card>
-        <el-card class="card setting-card" shadow="never">
+        <el-card id="backup" class="card setting-card" shadow="never">
           <template #header>
             <span class="card-title">备份与恢复</span>
           </template>
@@ -343,6 +356,7 @@ import {
 } from '../api'
 import type { BackupData } from '../api/types'
 import { REPO_ISSUES_URL, REPO_RELEASES_URL, REPO_URL } from '../api/repo'
+import UpgradeGuide from '../components/UpgradeGuide.vue'
 import { useAuthStore } from '../stores/auth'
 import { useInstancesStore } from '../stores/instances'
 import { useUpdateStore } from '../stores/update'
@@ -402,11 +416,15 @@ async function onSaveSettings() {
 
 const checkSource = ref<'github' | 'ghfast'>('github')
 const notesVisible = ref(false)
+// 升级步骤就地展开，不持久化：刷新后回到收起，避免卡片长期变高
+const guideOpen = ref(false)
 
 const info = computed(() => update.info)
 const capability = computed(() => update.capability)
 const updateBusy = computed(() => update.running || update.upgrading)
 const canUpgradeNow = computed(() => update.canUpgrade && update.hasUpdate && !updateBusy.value)
+// 后端只在容器环境且真有新版本时下发 guide；有分步引导时它就是唯一升级入口
+const hasGuide = computed(() => !!capability.value?.guide)
 
 const envLabel = computed(() => {
   const mode = capability.value?.mode
@@ -696,8 +714,14 @@ async function onFileChange(e: Event) {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 12px;
   font-size: 13px;
+}
+
+.guide-toggle {
+  margin-left: auto;
+  font-size: 12px;
 }
 
 .env-reason {
