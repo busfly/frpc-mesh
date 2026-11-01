@@ -48,6 +48,8 @@ type Capability struct {
 	AssetName   string `json:"asset_name"`
 	BinaryPath  string `json:"binary_path,omitempty"`
 	HasChecksum bool   `json:"has_checksum"`
+	// Guide 仅容器环境且检查到合法新版本时存在，给前端渲染分步升级引导
+	Guide *UpgradeGuide `json:"guide,omitempty"`
 }
 
 type UpgradeState struct {
@@ -114,6 +116,7 @@ func (u *Upgrader) CapabilityFor(latestVer string, assets []Asset) Capability {
 	if inContainer() {
 		cap.Mode = "container"
 		cap.Reason = "检测到运行在容器中：容器内替换的二进制会在镜像重建时丢失，请改用新的镜像包再重建容器"
+		cap.Guide = buildGuide(latestVer, runtime.GOARCH)
 		return cap
 	}
 	if !found {
