@@ -13,7 +13,7 @@ ENV GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0
 WORKDIR /src
 # VERSION 决定容器内 frpc-mesh 自报版本，供「检查新版本」与自升级判定使用
 # 与 Makefile / main.go / docker-compose.yml 的版本保持一致；make release 会用 --build-arg 覆盖
-ARG VERSION=1.1.0
+ARG VERSION=1.1.1
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .

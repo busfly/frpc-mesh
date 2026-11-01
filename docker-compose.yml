@@ -4,7 +4,7 @@ services:
       context: .
       args:
         # 自报版本号，与 make release 的 VERSION 保持一致（页面「检查新版本」据此判断）
-        VERSION: "${VERSION:-1.1.0}"
+        VERSION: "${VERSION:-1.1.1}"
     image: frpc-mesh:latest
     container_name: frpc-mesh
     restart: unless-stopped
