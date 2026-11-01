@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"frpc-mesh/internal/api"
 	"frpc-mesh/internal/auth"
+	"frpc-mesh/internal/logging"
 	"frpc-mesh/internal/runner"
 	"frpc-mesh/internal/store"
 	"frpc-mesh/internal/update"
@@ -30,10 +32,11 @@ var webDist embed.FS
 var Version = "1.1.0"
 
 func main() {
-	var httpAddr, dataDir string
+	var httpAddr, dataDir, logDir string
 	var resetPassword, showVersion bool
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:18080", "HTTP 监听地址")
 	flag.StringVar(&dataDir, "data", "", "数据目录（默认 $FRPC_MESH_DATA 或 ./data）")
+	flag.StringVar(&logDir, "log-dir", "", "运行日志同时落盘到该目录（默认取 $FRPC_MESH_LOG_DIR；两者都为空则只写标准输出）")
 	flag.BoolVar(&resetPassword, "reset-password", false, "将 admin 密码重置为 admin123 后退出（配合 docker exec 使用）")
 	flag.BoolVar(&showVersion, "version", false, "输出版本号后退出")
 	flag.Parse()
@@ -41,6 +44,20 @@ func main() {
 	if showVersion {
 		fmt.Println(Version)
 		return
+	}
+
+	// 日志落盘：不设参数时与旧版完全一致（只写 stdout）。目录建不出来只警告——
+	// "日志写不了"不该让面板起不来
+	if logDir == "" {
+		logDir = os.Getenv("FRPC_MESH_LOG_DIR")
+	}
+	if logDir != "" {
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			log.Printf("警告: 日志目录 %s 不可用（%v），本次运行日志只写标准输出", logDir, err)
+		} else {
+			log.SetOutput(io.MultiWriter(os.Stdout, logging.NewRotatingWriter(logDir, "frpc-mesh.log", 10<<20, 5)))
+			log.Printf("运行日志同时写入 %s/frpc-mesh.log（单文件 10MB，最多保留 5 份）", logDir)
+		}
 	}
 
 	if dataDir == "" {
