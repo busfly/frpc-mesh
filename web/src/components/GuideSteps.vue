@@ -38,7 +38,7 @@ function isCaption(cmd: string): boolean {
 function onLink(e: MouseEvent, url?: string) {
   if (!url || !url.startsWith('#')) return
   e.preventDefault()
-  document.querySelector(url)?.scrollIntoView({ block: 'center' })
+  document.getElementById(url.slice(1))?.scrollIntoView({ block: 'center' })
 }
 
 function onCopy(e: MouseEvent, cmd: string) {

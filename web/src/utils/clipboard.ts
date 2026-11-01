@@ -20,8 +20,12 @@ export async function copyText(text: string, fallbackEl?: HTMLElement | null): P
     ta.style.opacity = '0'
     document.body.appendChild(ta)
     ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
+    let ok = false
+    try {
+      ok = document.execCommand('copy')
+    } finally {
+      ta.remove()
+    }
     if (ok) return 'copied'
   } catch {
     /* 继续走选中 */
