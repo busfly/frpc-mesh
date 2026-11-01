@@ -162,7 +162,9 @@
             >
               检查更新
             </el-button>
+            <!-- 容器环境有分步引导时不再放这个点不动的主按钮：入口只留「怎么升级？看步骤」 -->
             <el-button
+              v-if="!hasGuide"
               type="primary"
               :loading="updateBusy"
               :disabled="!canUpgradeNow"
@@ -421,6 +423,8 @@ const info = computed(() => update.info)
 const capability = computed(() => update.capability)
 const updateBusy = computed(() => update.running || update.upgrading)
 const canUpgradeNow = computed(() => update.canUpgrade && update.hasUpdate && !updateBusy.value)
+// 后端只在容器环境且真有新版本时下发 guide；有分步引导时它就是唯一升级入口
+const hasGuide = computed(() => !!capability.value?.guide)
 
 const envLabel = computed(() => {
   const mode = capability.value?.mode
