@@ -23,7 +23,9 @@
         <div class="card-header">
           <div class="card-header-text">
             <span class="card-title">FRPS 服务器连接状态</span>
-            <span class="card-subtitle">每一行代表一台远程 frps 服务器及其 frpc 连接</span>
+            <span class="card-subtitle">
+              {{ isMobile ? '每张卡片代表一台远程 frps 服务器及其 frpc 连接' : '每一行代表一台远程 frps 服务器及其 frpc 连接' }}
+            </span>
           </div>
           <el-button text :icon="Refresh" :loading="store.loading" @click="store.refresh()">
             刷新
@@ -31,6 +33,7 @@
         </div>
       </template>
       <el-table
+        v-if="!isMobile"
         :data="dash.instances"
         v-loading="store.loading"
         stripe
@@ -103,6 +106,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <InstanceCardList
+        v-else
+        :rows="dashRows"
+        empty-text="暂无 FRPS 服务器，请前往「FRPS 服务器」页面创建"
+        more-label="详情"
+        @detail="goDetail"
+        @toggle="onToggleEnabledById"
+        @more="goDetail"
+      />
     </el-card>
   </div>
 </template>
@@ -125,12 +138,36 @@ import { apiGetInstance, apiUpdateInstance } from '../api'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
 import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
+import InstanceCardList, { type InstanceCardRow } from '../components/mobile/InstanceCardList.vue'
+import { useIsMobile } from '../composables/useMediaQuery'
 import type { Dashboard, DashboardInstance } from '../api/types'
 
 const router = useRouter()
 const store = useInstancesStore()
 const dash = computed(() => store.dashboard)
 const toggling = reactive<Record<number, boolean>>({})
+const isMobile = useIsMobile()
+
+/** 仪表盘卡片：数据来自 /api/dashboard；「⋯」不做操作面板，直接跳服务器页（一功能一入口） */
+const dashRows = computed<InstanceCardRow[]>(() =>
+  dash.value.instances.map((i) => ({
+    id: i.id,
+    name: i.name,
+    status: i.status,
+    addr: `${i.server_addr}:${i.server_port}`,
+    enabled: i.enabled,
+    toggling: !!toggling[i.id],
+    proxiesTotal: i.proxies_total,
+    proxiesOnline: i.proxies_online,
+    versionLabel: rowVersionLabel(i),
+    versionFallback: rowVersionFallback(i)
+  }))
+)
+
+async function onToggleEnabledById(id: number, val: boolean) {
+  const row = dash.value.instances.find((i) => i.id === id)
+  if (row) await onToggleEnabled(row, val)
+}
 
 interface StatCard {
   key: keyof Omit<Dashboard, 'instances'>

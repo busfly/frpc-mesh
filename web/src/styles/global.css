@@ -162,3 +162,12 @@ body {
 .lat-na {
   color: #c0c4cc;
 }
+
+/* 状态圆点（桌面 Tab 与移动卡片共用，色值由 statusDotColor 内联给） */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}

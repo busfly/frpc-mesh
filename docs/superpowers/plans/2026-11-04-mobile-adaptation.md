@@ -418,12 +418,25 @@ const SEED = [
     ] }
 ]
 
-async function seed() {
-  const login = await fetch(`${BASE}/api/auth/login`, {
+async function loginOnce() {
+  return fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: USER, password: PASS })
   })
+}
+
+async function seed() {
+  // 容器刚起时端口可能还没就绪（OrbStack 挂载新目录也偶发慢几秒），先探通再灌数据
+  let login
+  for (let i = 0; ; i++) {
+    try {
+      login = await loginOnce()
+      if (login.ok) break
+    } catch {}
+    if (i > 40) throw new Error('后端未就绪：' + BASE)
+    await new Promise((r) => setTimeout(r, 500))
+  }
   if (!login.ok) throw new Error(`登录失败 ${login.status}`)
   const { token } = await login.json()
   const auth = { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
@@ -626,6 +639,7 @@ async function run() {
         check(`[${path}] 移动形态不渲染表格`, !shape.table, JSON.stringify(shape))
         check(`[${path}] 移动形态渲染卡片列表`, shape.cards, JSON.stringify(shape))
       }
+      await S.shot('mobile' + (path === '/' ? '-dashboard' : path.replace(/^\//, '-')) + '.png')
     }
     // —— 桌面回归基线 1440×844 ——
     await S.setViewport(1440, 844)
@@ -1466,7 +1480,14 @@ git commit -m "refactor(web): 代理状态/本地/远程/延迟四段渲染抽�
           :loading="row.toggling"
           @change="emit('toggle', row.id, $event as boolean)"
         />
-        <button class="fm-more" aria-label="更多操作" @click="emit('more', row.id)">⋯</button>
+        <button
+          class="fm-more"
+          :class="{ 'fm-more-text': moreLabel }"
+          :aria-label="moreLabel ? undefined : '更多操作'"
+          @click="emit('more', row.id)"
+        >
+          {{ moreLabel || '⋯' }}
+        </button>
       </div>
       <div class="fm-card-row">
         <span class="fm-card-k">服务器</span>
@@ -1510,7 +1531,9 @@ export interface InstanceCardRow {
   error?: string
 }
 
-defineProps<{ rows: InstanceCardRow[]; emptyText?: string }>()
+withDefaults(defineProps<{ rows: InstanceCardRow[]; emptyText?: string; moreLabel?: string }>(), {
+  moreLabel: ''
+})
 const emit = defineEmits<{
   detail: [number]
   toggle: [number, boolean]
@@ -1687,9 +1710,10 @@ async function onToggleEnabledById(id: number, val: boolean) {
         v-else
         :rows="dashRows"
         empty-text="暂无 FRPS 服务器，请前往「FRPS 服务器」页面创建"
+        more-label="详情"
         @detail="goDetail"
         @toggle="onToggleEnabledById"
-        @more="goInstances"
+        @more="goDetail"
       />
 ```
 
@@ -1725,7 +1749,7 @@ async function onToggleEnabledById(id: number, val: boolean) {
 }
 ```
 
-> 仪表盘卡片的「⋯」不做操作面板，直接跳服务器页——一个功能一个入口，仪表盘只保留「详情」这一条主路径。
+> 仪表盘卡片不配操作面板：`more-label="详情"` 把「⋯」换成文字按钮，与桌面表格那一列同一文案、同一 `goDetail` 跳转（规格 4.1）。`.fm-more-text` 必须写在 `.fm-more` 之后——同特异度靠书写顺序覆盖定宽。
 >
 > `dashRows` 不给 `error`：`/api/dashboard` 返回的 `DashboardInstance`（`web/src/api/types.ts:95-104`）没有 `last_error` 字段，仪表盘卡片显示空错误行不如不显示；要看失败原因走「详情」或服务器页卡片。
 

@@ -31,12 +31,25 @@ const SEED = [
     ] }
 ]
 
-async function seed() {
-  const login = await fetch(`${BASE}/api/auth/login`, {
+async function loginOnce() {
+  return fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: USER, password: PASS })
   })
+}
+
+async function seed() {
+  // 容器刚起时端口可能还没就绪（OrbStack 挂载新目录也偶发慢几秒），先探通再灌数据
+  let login
+  for (let i = 0; ; i++) {
+    try {
+      login = await loginOnce()
+      if (login.ok) break
+    } catch {}
+    if (i > 40) throw new Error('后端未就绪：' + BASE)
+    await new Promise((r) => setTimeout(r, 500))
+  }
   if (!login.ok) throw new Error(`登录失败 ${login.status}`)
   const { token } = await login.json()
   const auth = { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
@@ -239,6 +252,7 @@ async function run() {
         check(`[${path}] 移动形态不渲染表格`, !shape.table, JSON.stringify(shape))
         check(`[${path}] 移动形态渲染卡片列表`, shape.cards, JSON.stringify(shape))
       }
+      await S.shot('mobile' + (path === '/' ? '-dashboard' : path.replace(/^\//, '-')) + '.png')
     }
     // —— 桌面回归基线 1440×844 ——
     await S.setViewport(1440, 844)

@@ -566,14 +566,6 @@ function onDelete(instanceId: number, row: Proxy) {
   color: var(--el-text-color-secondary);
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
 .tab-toolbar {
   display: flex;
   align-items: center;
