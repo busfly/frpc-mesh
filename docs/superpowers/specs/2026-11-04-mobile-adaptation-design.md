@@ -82,7 +82,8 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 ### 4.3 FRPS 服务器 `InstancesView`
 
-- 卡片四行：① 名称（点击 = 跳 `/proxies?instance=<id>`，与桌面名称链接同一 `goDetail`）+ 状态点 + 状态文字 ② `addr:port`（`mono`）③「代理 M/N 在线」+ frpc 版本（口径沿用桌面：`默认 v0.61.1` / `v0.71.1` / `v9.9.9 · 暂用 v0.61.1`，走 `frpcVersionLabel` / `frpcVersionFallback`）④ 启用开关（带「已启用/已停用」文字，沿用 `onToggleEnabled`）。
+- 卡片四行：① 名称（点击 = 跳 `/proxies?instance=<id>`，与桌面名称链接同一 `goDetail`）+ 状态点 + 状态文字 ② `addr:port`（`mono`）③「代理 M/N 在线」+ frpc 版本（口径沿用桌面：`默认 v0.61.1` / `v0.71.1` / `v9.9.9 · 暂用 v0.61.1`，走 `frpcVersionLabel` / `frpcVersionFallback`；版本回落时橙色 + `FieldHint` 说明原因）④ 启用开关（带「已启用/已停用」文字，沿用 `onToggleEnabled`）。
+- 桌面靠 hover tooltip 才看得见的两件事在触屏必须有地方读：失败原因（error 态在卡片补一行 `runtime.last_error`，无错误不占行；`/api/dashboard` 的 `DashboardInstance` 没有该字段，仪表盘卡片因此不显示）、版本回落原因（`FieldHint`）。
 - 「⋯」面板项 = 桌面已有的四个操作，不新增：**重启、管理面板（`manage_port` 未配置时禁用并说明原因）、编辑、删除**。
 - 「新建 FRPS 服务器」按钮保留在页头，移动端页头改为上下排（标题一行、按钮整宽一行）。
 
@@ -100,7 +101,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 ### 4.5 frpc 版本管理 `VersionsView`
 
-- 版本卡 grid 从 `minmax(150px,1fr)` 改为移动端两列（`repeat(2, 1fr)`，窄到 320px 时单列）。
+- 版本卡是 `el-row`/`el-col`（`VersionsView.vue:54-63`，现为 `:xs="24" :sm="12" :md="8" :lg="6"`），移动端把 `:xs` 改成 12 走两列；窄到 359px 以下用媒体查询退回单列。卡片内边距由 `:body-style` 内联给出，按形态取值（CSS 覆盖不掉内联样式）。
 - 「使用中」「已下载」用文字徽标，不只靠颜色；下载中任务的进度条放在卡片下方整行。
 - 顶部数据源选择器与「检查更新」按钮保持一行，`flex-wrap` 已具备。
 
@@ -118,10 +119,12 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 | `useSwipeToClose(target, onClose)` | `web/src/composables/useSwipeToClose.ts` | 把手区 touch 事件：位移 >80px 或速度 >0.5px/ms 关闭，否则回弹；忽略内层滚动容器冒泡 | 无 |
 | `ActionSheet.vue` | `web/src/components/mobile/ActionSheet.vue` | 「⋯」操作面板：`el-drawer direction="btt"` + 标题 + 操作项（44px 行高、可标红、可禁用带原因）+ 取消 | `useSwipeToClose` |
 | `FieldHint.vue` | `web/src/components/mobile/FieldHint.vue` | 说明文字双形态：`(hover: hover)` 渲染现有 tooltip，触屏渲染可点「?」展开同一段文案 | 无 |
-| `ProxyCardList.vue` | `web/src/components/mobile/ProxyCardList.vue` | 代理卡片列表：props `items`，事件 `toggle/edit/copy/remove` | `utils/status.ts`、`ProxyRemoteCell`、`ProxyLocalCell` |
+| `ProxyCardList.vue` | `web/src/components/mobile/ProxyCardList.vue` | 代理卡片列表：props `rows`（`ProxyCardRow`）+ `remoteHost`，事件 `toggle` / `more`（编辑·拷贝·删除走 `ActionSheet`，与桌面表格操作列同权） | `utils/status.ts`、四个共享 cell |
 | `ProxyRemoteCell.vue` | `web/src/components/mobile/ProxyRemoteCell.vue` | 「远程端口 / 域名」渲染（tcp/udp 端口、随机、custom_domains、subdomain 四分支），**桌面表格与移动卡片共用** | 无 |
 | `ProxyLocalCell.vue` | `web/src/components/mobile/ProxyLocalCell.vue` | 「本地地址 / 访问摘要」渲染（visitor 与本地端口分支），**桌面表格与移动卡片共用** | 无 |
-| `InstanceCardList.vue` | `web/src/components/mobile/InstanceCardList.vue` | 服务器卡片列表（服务器页与仪表盘共用）：props `items` + 事件 | `utils/status.ts`、`utils/frpcVersion.ts` |
+| `ProxyStatusCell.vue` | `web/src/components/mobile/ProxyStatusCell.vue` | 「已禁用 / 在线 / 离线」标签，**桌面表格与移动卡片共用** | 无 |
+| `ProxyLatencyCell.vue` | `web/src/components/mobile/ProxyLatencyCell.vue` | 延迟四态（`--` 未测 / `不通` / `可通` / `N ms`），**桌面表格与移动卡片共用** | 无 |
+| `InstanceCardList.vue` | `web/src/components/mobile/InstanceCardList.vue` | 服务器卡片列表（服务器页与仪表盘共用）：props `rows`（`InstanceCardRow`）+ 事件 `detail` / `toggle` / `more`；error 态附一行失败原因、版本回落附 `FieldHint` | `utils/status.ts`、`utils/frpcVersion.ts`、`FieldHint` |
 | `SideMenu.vue` | `web/src/components/layout/SideMenu.vue` | 5 项菜单定义唯一来源，侧栏与抽屉共用 | 无 |
 | `mobile.css` | `web/src/styles/mobile.css` | 只放媒体查询与移动形态工具类：`.fm-sheet`（把 `el-dialog` 变成底部弹层）、chip 条、卡片列表、安全区、触摸热区 | 无 |
 
@@ -188,7 +191,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 5. 卡片「⋯」→ ActionSheet 可打开、可下滑关闭、删除项为红色且需要二次确认。
 6. 「+ 创建」→ 底部弹层表单：字段单列、label 在上、保存吸底；填完提交后新代理出现在列表（真实打后端）。
 7. 触屏形态下 `FieldHint` 可点开看到文案（断言文案文本存在且可见）。
-8. 代理地址复制按钮在 http 下给出「已复制」或「已选中」提示（复用已有兜底）。
+8. 配置文件底部弹层里的「复制」按钮在 http 下给出「已复制」或「已选中」提示（复用 `utils/clipboard.ts` 的三档兜底，不许谎报成功）。
 9. `visibilitychange` 回前台确实触发一次列表请求（Network 计数）。
 10. 安全区：无头 Chrome 里 `env(safe-area-inset-*)` 恒为 0，**不能断言像素值**。改为两条可测断言：`index.html` 的 viewport 含 `viewport-fit=cover`；弹层 footer 与顶栏的 computed style 里 `padding-bottom` / `padding-top` 声明了 `env(...)`（用 `getPropertyValue` 检查声明串，而非解析后的 0px）。真机再人工确认刘海与底部工具栏不遮挡。
 11. 桌面回归：1440×844 下断言 `el-table` 存在、`el-aside` 220px、无移动 drawer、无 `ProxyCardList` 节点。
