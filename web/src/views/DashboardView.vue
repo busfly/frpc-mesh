@@ -8,9 +8,7 @@
         <div class="stat-card" :class="c.cls">
           <div class="stat-label">
             {{ c.label }}
-            <el-tooltip :content="c.tip" placement="top">
-              <el-icon class="stat-help"><QuestionFilled /></el-icon>
-            </el-tooltip>
+<FieldHint :content="c.tip" />
           </div>
           <div class="stat-value">{{ dash[c.key] }}</div>
           <el-icon class="stat-icon"><component :is="c.icon" /></el-icon>
@@ -82,12 +80,7 @@
           <template #header>
             <span class="th-enabled">
               启用
-              <el-tooltip
-                content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动"
-                placement="top"
-              >
-                <el-icon class="th-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
+<FieldHint content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动" />
             </span>
           </template>
           <template #default="{ row }">
@@ -129,7 +122,6 @@ import {
   CircleCheck,
   Connection,
   Menu,
-  QuestionFilled,
   Refresh,
   Share,
   View
@@ -139,6 +131,7 @@ import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
 import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 import InstanceCardList, { type InstanceCardRow } from '../components/mobile/InstanceCardList.vue'
+import FieldHint from '../components/mobile/FieldHint.vue'
 import { useIsMobile } from '../composables/useMediaQuery'
 import type { Dashboard, DashboardInstance } from '../api/types'
 
@@ -271,13 +264,6 @@ async function onToggleEnabled(row: DashboardInstance, val: boolean) {
   }
 }
 
-.stat-help {
-  font-size: 12px;
-  margin-left: 4px;
-  vertical-align: -1px;
-  opacity: 0.75;
-  cursor: help;
-}
 
 .card-header {
   display: flex;
@@ -326,8 +312,4 @@ async function onToggleEnabled(row: DashboardInstance, val: boolean) {
   gap: 4px;
 }
 
-.th-help {
-  color: #909399;
-  cursor: help;
-}
 </style>

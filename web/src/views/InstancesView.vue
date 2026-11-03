@@ -67,12 +67,7 @@
           <template #header>
             <span class="th-enabled">
               启用
-              <el-tooltip
-                content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动"
-                placement="top"
-              >
-                <el-icon class="th-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
+<FieldHint content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动" />
             </span>
           </template>
           <template #default="{ row }">
@@ -147,7 +142,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, QuestionFilled } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import InstanceFormDrawer from '../components/InstanceFormDrawer.vue'
 import { apiListProxies, apiProxiesOnline, apiUpdateInstance } from '../api'
 import type { Instance } from '../api/types'
@@ -155,6 +150,7 @@ import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
 import InstanceCardList, { type InstanceCardRow } from '../components/mobile/InstanceCardList.vue'
 import ActionSheet, { type ActionItem } from '../components/mobile/ActionSheet.vue'
+import FieldHint from '../components/mobile/FieldHint.vue'
 import { useIsMobile } from '../composables/useMediaQuery'
 import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 
@@ -327,10 +323,6 @@ function onDelete(row: Instance) {
   gap: 4px;
 }
 
-.th-help {
-  color: #909399;
-  cursor: help;
-}
 
 .op-cell {
   display: flex;

@@ -90,12 +90,9 @@
         <template #label>
           <span class="label-with-hint">
             frpc 版本
-            <el-tooltip
-              placement="top"
+<FieldHint
               content="老服务端配新客户端（或反之）可能连不上，可只为这台服务器固定一个版本。不指定即跟随「frpc 版本管理」里的默认版本；指定的版本若还没下载，会先用默认版本启动，后台补下载完成后自动重启切过去。"
-            >
-              <el-icon class="hint-icon"><QuestionFilled /></el-icon>
-            </el-tooltip>
+            />
           </span>
         </template>
         <el-select v-model="form.frpc_version" class="full-width">
@@ -255,6 +252,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useIsMobile } from '../composables/useMediaQuery'
 import { useSwipeToClose } from '../composables/useSwipeToClose'
+import FieldHint from './mobile/FieldHint.vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { apiCreateInstance, apiUpdateInstance } from '../api'
@@ -479,11 +477,6 @@ async function onSave() {
   gap: 4px;
 }
 
-.hint-icon {
-  color: var(--el-text-color-secondary);
-  cursor: help;
-  font-size: 13px;
-}
 
 .opt-note {
   margin-left: 8px;

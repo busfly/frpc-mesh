@@ -221,4 +221,24 @@ async function onSubmit() {
   color: #b6bac2;
   margin-top: 6px;
 }
+@media (max-width: 767px) {
+  /* iOS Safari 的 100vh 比可视区高，底部版本号会被地址栏压住 */
+  .login-page {
+    height: 100dvh;
+    padding: 0 12px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+  }
+  .login-card :deep(.el-card__body) {
+    padding: 24px 18px 18px;
+  }
+  .login-header {
+    margin-bottom: 18px;
+  }
+  .login-btn {
+    min-height: 44px;
+  }
+}
 </style>

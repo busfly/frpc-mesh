@@ -12,6 +12,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 
 withDefaults(defineProps<{ content: string; placement?: 'top' | 'bottom' | 'left' | 'right' }>(), {
   placement: 'top'
