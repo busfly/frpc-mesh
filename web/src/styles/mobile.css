@@ -235,9 +235,9 @@
   .page-container .el-button.is-link {
     min-height: 32px;
   }
-  /* 卡片里的启用开关：热区扩大，视觉不变 */
+  /* 卡片里的启用开关：EP 把 height 写死在 .el-switch 上（32px），padding 撑不开，只能显式加高 */
   .fm-card .el-switch {
-    padding-block: 10px;
+    height: 44px;
   }
   /* 弹层里的输入控件：整档提到 44（用 EP 的 component-size 变量，wrapper 会跟着长高）
      字号 16px 是硬要求：iOS Safari 对 <16px 的输入框聚焦时会自动放大页面 */
