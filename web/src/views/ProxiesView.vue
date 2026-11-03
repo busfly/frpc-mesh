@@ -214,8 +214,10 @@
     <el-dialog
       v-model="infoVisible"
       :title="infoTitle"
-      width="780px"
-      top="6vh"
+      :width="isMobile ? '100%' : '780px'"
+      :top="isMobile ? undefined : '6vh'"
+      :class="isMobile ? 'fm-sheet-dialog' : ''"
+      modal-class="fm-dialog-overlay"
       append-to-body
       destroy-on-close
     >
@@ -224,7 +226,14 @@
     </el-dialog>
 
     <!-- 拷贝代理到其他服务器 -->
-    <el-dialog v-model="copyVisible" title="拷贝代理到服务器" width="440px" append-to-body>
+    <el-dialog
+      v-model="copyVisible"
+      title="拷贝代理到服务器"
+      :width="isMobile ? '100%' : '440px'"
+      :class="isMobile ? 'fm-sheet-dialog' : ''"
+      modal-class="fm-dialog-overlay"
+      append-to-body
+    >
       <el-form label-position="top">
         <el-form-item :label="`将「${copySource?.name || ''}」拷贝到`">
           <el-select v-model="copyTargetId" placeholder="选择目标服务器" class="full-width">

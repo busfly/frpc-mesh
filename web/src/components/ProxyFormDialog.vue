@@ -1,13 +1,15 @@
 <template>
-  <el-dialog
+  <component
+    :is="container"
     :model-value="modelValue"
-    :title="dialogTitle"
-    width="720px"
-    destroy-on-close
-    append-to-body
+    v-bind="containerProps"
     @update:model-value="emit('update:modelValue', $event)"
     @open="onOpen"
   >
+    <template #header>
+      <div ref="handleEl" v-if="isMobile" class="fm-handle"></div>
+      <span :class="isMobile ? 'fm-sheet-title' : 'el-dialog__title'">{{ dialogTitle }}</span>
+    </template>
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" hide-required-asterisk>
       <!-- stcp / xtcp / sudp：选择提供方 / 访问方 -->
       <el-segmented
@@ -44,7 +46,7 @@
       <!-- proxy：本地服务 -->
       <template v-if="role === 'proxy'">
         <el-row :gutter="16">
-          <el-col :span="12">
+          <el-col :xs="24" :span="12">
             <el-form-item label="本地地址">
               <el-input
                 v-model="form.local_ip"
@@ -85,9 +87,9 @@
               </div>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :xs="24" :span="12">
             <el-form-item label="本地端口" prop="local_port">
-              <el-input-number
+              <el-input-number inputmode="numeric"
                 v-model="form.local_port"
                 :min="1"
                 :max="65535"
@@ -102,7 +104,7 @@
         <!-- tcp / udp：远程端口 -->
         <el-form-item v-if="form.type === 'tcp' || form.type === 'udp'" label="远程端口" prop="remote_port">
           <div class="remote-port-row">
-            <el-input-number
+            <el-input-number inputmode="numeric"
               v-model="form.remote_port"
               :min="0"
               :max="65535"
@@ -146,18 +148,18 @@
             <el-input v-model="form.subdomain" placeholder="例如: nas" />
           </el-form-item>
           <el-row :gutter="16">
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="路径（可选，逗号分隔）">
                 <el-input v-model="form.locations" placeholder="例如: /, /api" />
               </el-form-item>
             </el-col>
             <template v-if="form.type === 'http'">
-              <el-col :span="6">
+              <el-col :xs="12" :span="6">
                 <el-form-item label="用户名">
                   <el-input v-model="form.http_user" placeholder="HTTP Basic Auth" />
                 </el-form-item>
               </el-col>
-              <el-col :span="6">
+              <el-col :xs="12" :span="6">
                 <el-form-item label="密码">
                   <el-input
                     v-model="form.http_password"
@@ -182,12 +184,12 @@
         </el-form-item>
 
         <el-row :gutter="16">
-          <el-col :span="8">
+          <el-col :xs="24" :span="8">
             <el-form-item class="check-item">
               <el-checkbox v-model="form.use_encryption">加密传输</el-checkbox>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :xs="24" :span="8">
             <el-form-item class="check-item">
               <el-checkbox v-model="form.use_compression">压缩传输</el-checkbox>
             </el-form-item>
@@ -212,7 +214,7 @@
           />
         </el-form-item>
         <el-row :gutter="16">
-          <el-col :span="12">
+          <el-col :xs="24" :span="12">
             <el-form-item label="绑定地址">
               <el-input v-model="form.bind_addr" placeholder="127.0.0.1" />
               <div class="hint-chips">
@@ -225,9 +227,9 @@
               </div>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :xs="24" :span="12">
             <el-form-item label="绑定端口" prop="bind_port">
-              <el-input-number
+              <el-input-number inputmode="numeric"
                 v-model="form.bind_port"
                 :min="1"
                 :max="65535"
@@ -249,11 +251,14 @@
         </el-button>
       </div>
     </template>
-  </el-dialog>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { ElDialog, ElDrawer } from 'element-plus'
+import { useIsMobile } from '../composables/useMediaQuery'
+import { useSwipeToClose } from '../composables/useSwipeToClose'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { apiCheckPort, apiCreateProxy, apiUpdateProxy, getNetHints } from '../api'
@@ -285,6 +290,19 @@ const ROLE_OPTIONS = [
 
 const formRef = ref<FormInstance>()
 const saving = ref(false)
+
+const isMobile = useIsMobile()
+const handleEl = ref<HTMLElement | null>(null)
+useSwipeToClose(handleEl, () => emit('update:modelValue', false))
+
+// 桌面保持原 el-dialog 与 720px；手机换成贴底抽屉。模板只有一份，容器靠参数切。
+const container = computed(() => (isMobile.value ? ElDrawer : ElDialog))
+// 显式标注成 Record：两个分支属性名不同，union 传给 v-bind 会被 vue-tsc 挑刺
+const containerProps = computed<Record<string, unknown>>(() =>
+  isMobile.value
+    ? { direction: 'btt', size: '92%', class: 'fm-sheet fm-form', destroyOnClose: true, appendToBody: true }
+    : { width: '720px', destroyOnClose: true, appendToBody: true }
+)
 const domainMode = ref<'自定义域名' | '子域名'>('自定义域名')
 /** 角色：提供方 proxy / 访问方 visitor（stcp/xtcp/sudp 时可在弹窗内切换） */
 const role = ref<'proxy' | 'visitor'>('proxy')

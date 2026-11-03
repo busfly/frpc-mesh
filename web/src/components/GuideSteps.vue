@@ -33,7 +33,7 @@
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { GuideStep } from '../api/types'
-import { copyText } from '../utils/clipboard'
+import { copyHint, copyText } from '../utils/clipboard'
 
 defineProps<{ steps: GuideStep[]; hideTitle?: boolean }>()
 
@@ -52,9 +52,8 @@ function onCopy(e: MouseEvent, cmd: string) {
   const row = (e.currentTarget as HTMLElement | null)?.closest('.cmd-row')
   const code = row?.querySelector('code') ?? null
   void copyText(cmd, code).then((r) => {
-    if (r === 'copied') ElMessage.success('已复制')
-    else if (r === 'selected') ElMessage.info('已选中该命令，按 Ctrl/Cmd+C 复制')
-    else ElMessage.error('复制失败，请用鼠标选中命令后手动复制')
+    const hint = copyHint(r)
+    ElMessage[hint.type](hint.text)
   })
 }
 </script>

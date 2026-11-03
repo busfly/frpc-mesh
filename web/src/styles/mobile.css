@@ -259,3 +259,27 @@
     padding: 10px 12px;
   }
 }
+
+/* —— 桌面对话框在移动形态变成底部弹层 —— */
+/* 桌面 el-dialog 居中；移动端把 overlay 变成贴底容器 */
+.fm-dialog-overlay {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.fm-sheet-dialog {
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: none;
+  border-radius: 16px 16px 0 0;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.fm-sheet-dialog .el-dialog__body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.fm-sheet-dialog .el-dialog__footer {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}

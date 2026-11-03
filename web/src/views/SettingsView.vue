@@ -302,7 +302,9 @@
     <el-dialog
       v-model="notesVisible"
       :title="notesTitle"
-      width="640px"
+      :width="isMobile ? '100%' : '640px'"
+      :class="isMobile ? 'fm-sheet-dialog' : ''"
+      modal-class="fm-dialog-overlay"
     >
       <div v-if="info" class="notes-head">
         <span v-if="info.published_at" class="text-muted">
@@ -359,11 +361,13 @@ import { REPO_ISSUES_URL, REPO_RELEASES_URL, REPO_URL } from '../api/repo'
 import UpgradeGuide from '../components/UpgradeGuide.vue'
 import { useAuthStore } from '../stores/auth'
 import { useInstancesStore } from '../stores/instances'
+import { useIsMobile } from '../composables/useMediaQuery'
 import { useUpdateStore } from '../stores/update'
 import { formatTime } from '../utils/status'
 
 const auth = useAuthStore()
 const router = useRouter()
+const isMobile = useIsMobile()
 const instStore = useInstancesStore()
 const update = useUpdateStore()
 
