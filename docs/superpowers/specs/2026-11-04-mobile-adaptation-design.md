@@ -198,6 +198,16 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 10. 安全区：无头 Chrome 里 `env(safe-area-inset-*)` 恒为 0，**不能断言像素值**。改为两条可测断言：`index.html` 的 viewport 含 `viewport-fit=cover`；弹层 footer 与顶栏的 computed style 里 `padding-bottom` / `padding-top` 声明了 `env(...)`（用 `getPropertyValue` 检查声明串，而非解析后的 0px）。真机再人工确认刘海与底部工具栏不遮挡。
 11. 桌面回归：1440×844 下断言 `el-table` 存在、`el-aside` 220px、无移动 drawer、无 `ProxyCardList` 节点。
 
+**跑通这套路子时踩到的七条，记下来免得下次重新踩**
+
+1. 无头 Chrome 的 `mobile: true` 仿真**不会**把 `(hover: hover)` 改成 `none`（`Emulation.setEmulatedMedia` 也压不住）。凡是靠 hover 判触屏的分支（`FieldHint` 走 tooltip 还是可点问号、复制兜底文案的措辞）在验收里永远只会走桌面分支，必须在 `Page.addScriptToEvaluateOnNewDocument` 里替页面重写 `matchMedia`，桌面段落跑完再 `removeScriptToEvaluateOnNewDocument` 摘掉。
+2. `el-drawer` / `el-dialog` 有约 300ms 开合动画，动画里元素的 rect 还在位移：不等落定就量「保存按钮是否在屏内」、就按坐标点按钮，会得到假的 FAIL。凡是「刚打开就要量/就要点」的步骤，中间补 600–700ms。
+3. 断言用的选择器要按**容器语义**而不是样式类：`.fm-sheet` 会先命中已关闭但仍挂在 DOM 里的 ActionSheet，`.el-drawer.btt, .el-dialog` 会先命中隐藏的信息弹窗，量到的是不可见容器的读数。表单弹层因此专门打一个 `.fm-form` 标记（`fm-sheet fm-form`）。
+4. 输入控件的高度量 `.el-input__wrapper`（外框），字号量 `.el-input__inner`：`.el-input__inner` 只是里面那行文字，恒在 24 上下，量它会误判不达 44。
+5. `el-drawer` 关闭后节点仍在 DOM（只是隐藏），「关掉了」要按 `getBoundingClientRect().height === 0` 判，不能按「查不到节点」。
+6. 验收会真的打后端建/删数据，所以灌数据必须幂等：实例和代理都按名字补齐，测试专用的 `cdp-mobile-prox` 每轮开头先清掉；删除断言要点**自己新建的那张卡**，否则每跑一轮就吃掉一条演示数据，跑到后面页面直接空列表。
+7. 填表单按 `.el-form-item__label` 的文字定位字段，别按 placeholder —— placeholder 里写的是「例如: web-server」，不含「名称」，按 placeholder 找会找不到，而页面里的 JS 异常被 CDP 吞掉后只会表现成「保存没生效」。
+
 **组件级冒烟（可选，不阻塞本轮）**：`useSwipeToClose` 阈值、`useIsMobile` 切换、卡片列表渲染与事件冒泡。引入 vitest 成本约 1–2 天，本轮以 CDP 端到端为准，vitest 留下一轮再定。
 
 **人工真机清单**（交付给用户自测）：iPhone Safari 直连内网 IP、微信里点开链接、外出走 frp 隧道三种路径各跑一遍登录 → 看代理状态 → 启停一个代理 → 新建一个代理 → 看运行日志。

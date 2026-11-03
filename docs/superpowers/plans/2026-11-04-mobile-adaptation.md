@@ -2193,7 +2193,7 @@ const container = computed(() => (isMobile.value ? ElDrawer : ElDialog))
 // 显式标注成 Record：两个分支属性名不同，union 传给 v-bind 会被 vue-tsc 挑刺
 const containerProps = computed<Record<string, unknown>>(() =>
   isMobile.value
-    ? { direction: 'btt', size: '92%', class: 'fm-sheet', destroyOnClose: true, appendToBody: true }
+    ? { direction: 'btt', size: '92%', class: 'fm-sheet fm-form', destroyOnClose: true, appendToBody: true }
     : { width: '720px', destroyOnClose: true, appendToBody: true }
 )
 ```
@@ -2210,7 +2210,7 @@ const containerProps = computed<Record<string, unknown>>(() =>
     :title="isEdit ? '编辑 FRPS 服务器' : '新建 FRPS 服务器'"
     :direction="isMobile ? 'btt' : 'rtl'"
     :size="isMobile ? '92%' : '560px'"
-    :class="isMobile ? 'fm-sheet' : ''"
+    :class="isMobile ? 'fm-sheet fm-form' : ''"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
     @open="onOpen"
@@ -2558,12 +2558,12 @@ git commit -m "feat(web): 版本/设置/登录页移动适配，说明文字改�
       const m = JSON.parse(e.data)
       if (m.method === 'Network.requestWillBeSent') {
         const u = m.params.request.url
-        if (/\/api\/(instances|dashboard)$/.test(u)) reqs.push(u)
+        if (/\/api\/(instances|dashboard)/.test(u)) reqs.push(u.replace(BASE, ''))
       }
     })
-    await S.js('Object.defineProperty(document, "visibilityState", { value: "hidden" }); document.dispatchEvent(new Event("visibilitychange"))')
+    await S.js('Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange"))')
     await new Promise((r) => setTimeout(r, 400))
-    await S.js('Object.defineProperty(document, "visibilityState", { value: "visible" }); document.dispatchEvent(new Event("visibilitychange"))')
+    await S.js('Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange"))')
     // 页面刚 navigate，10 秒轮询计时器是全新的；700ms 窗口内只有「回前台」这一轮刷新
     await new Promise((r) => setTimeout(r, 700))
     check('[移动] 回前台补刷一轮（instances+dashboard）', reqs.length === 2, `捕获 ${reqs.length} 次: ${reqs.join(',')}`)
@@ -2660,10 +2660,38 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
 
 - [ ] **Step 1: 补齐断言清单**
 
-在 `run()` 的移动段落里补上（每条都用真实 CDP 交互，不用假数据）：
+下面是 `run()` 里移动段落的**现状全文**（`scripts/verify-mobile.mjs` 就是这段，跑通后 37 项全绿）。相对最初的草稿，实测中改了七处，都已在代码注释里落到位：
+
+1. 触屏分支要靠 `Page.addScriptToEvaluateOnNewDocument` 重写 `matchMedia` 才测得到（无头 Chrome 的 `mobile: true` 不改 `(hover: hover)`），桌面段落前再摘掉。
+2. 刚打开弹层就量位置/点坐标会撞上 300ms 开合动画，统一补 600–700ms 落定。
+3. 表单弹层用专用标记 `.fm-form` 选，`.fm-sheet` / `.el-dialog` 会先命中已关闭但仍在 DOM 里的容器。
+4. 输入框高度量 `.el-input__wrapper`，字号量 `.el-input__inner`。
+5. 移动形态下「类型卡」本身就是新建入口（点一下即 `openCreate`），没有单独的「新增代理」按钮，别再去找它。
+6. 填字段按 `.el-form-item__label` 的文字定位，placeholder 里没有「名称」两个字。
+7. 删除断言点自己新建的那张卡（`tapInCard`），`seed()` 按名字补齐实例**和代理**，否则每轮吃掉一条演示数据、后面页面直接空列表。
 
 ```js
-    // 触摸目标：主要可点元素 ≥44、次要文字按钮 ≥32（逐页审，含汉堡与卡片「⋯」）
+    // 无头 Chrome 的 Emulation.setEmulatedMedia 实测改不动 hover/pointer（恒为 hover:true），
+    // 而真手机是 hover:none；FieldHint（问号 tooltip 还是可点浮层）与复制兜底文案都靠它判定，
+    // 所以在文档加载前把这个判定替成手机的值。
+    const hoverPatch = await S.cmd('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        const orig = window.matchMedia.bind(window)
+        const fake = (q, val) => ({
+          media: q, matches: val, onchange: null,
+          addEventListener: () => {}, removeEventListener: () => {},
+          addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false
+        })
+        window.matchMedia = (q) => {
+          const key = String(q).replace(/\\s+/g, '')
+          if (key === '(hover:hover)') return fake(q, false)
+          if (key === '(pointer:coarse)') return fake(q, true)
+          return orig(q)
+        }
+      })()`
+    })
+
+    // —— 触摸热区：主要可点元素 ≥44、次要文字按钮 ≥32（逐页审，含汉堡与卡片「⋯」）——
     const tapBad = []
     for (const path of PAGES) {
       await S.cmd('Page.navigate', { url: BASE + path })
@@ -2673,8 +2701,8 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
         const PRIM = '.fm-more, .fm-chip, .hamburger, .el-button--primary:not(.is-text):not(.is-link), .el-button--success:not(.is-text):not(.is-link), .fm-card .el-switch';
         const SECOND = '.el-button.is-text, .el-button.is-link';
         const bad = (sel, min) => [...document.querySelectorAll(sel)]
-          .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height < min; })
-          .map((el) => el.className.split(' ').slice(0, 2).join('.') + ' h=' + Math.round(el.getBoundingClientRect().height));
+          .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && Math.round(r.height) < min; })
+          .map((el) => (el.innerText || '').trim().slice(0, 6) + '|' + String(el.getAttribute('class') || '') + ' h=' + Math.round(el.getBoundingClientRect().height));
         return { primary: bad(PRIM, 44), secondary: bad(SECOND, 32) };
       })()`)
       for (const x of t.primary) tapBad.push(`${path} 主:${x}`)
@@ -2682,26 +2710,36 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
     }
     check('[移动] 触摸热区达标（主44/次32）', tapBad.length === 0, tapBad.slice(0, 4).join(' | '))
 
-    // 汉堡按钮：移动形态存在、桌面形态不存在（顺带在本步确认外壳切换生效）
+    // 汉堡与侧栏互换
+    await S.cmd('Page.navigate', { url: `${BASE}/` })
+    await S.wait('document.querySelector(".hamburger")', 'hamburger')
     check('[移动] 汉堡入口出现且侧栏不占位', await S.js(
       `!!document.querySelector('.hamburger') && !document.querySelector('.el-aside')`
     ))
 
-    // ActionSheet 可开可关
-    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
-    await S.wait('document.querySelector(".fm-more")', 'proxy cards')
+    // 操作面板：项与桌面一致、行高够点、可取消
+    await S.cmd('Page.navigate', { url: `${BASE}/instances` })
+    await S.wait('document.querySelector(".fm-more")', 'instance cards')
     await tapAt(S, '.fm-more')
     await S.wait('document.querySelector(".fm-actionsheet")', 'action sheet open')
     const asOK = await S.js(`(() => {
-      const items = [...document.querySelectorAll('.fm-actionsheet .as-item')].map((e) => e.innerText.trim());
-      return { hasEdit: items.includes('编辑'), hasCopy: items.some((t) => t.startsWith('拷贝')), hasDelete: items.includes('删除'), count: items.length };
+      const items = [...document.querySelectorAll('.fm-actionsheet .as-item')].map((e) => e.innerText.trim().split('\\n')[0]);
+      const hs = [...document.querySelectorAll('.fm-actionsheet .as-item')].map((e) => Math.round(e.getBoundingClientRect().height));
+      return { items, hs, tall: hs.every((h) => h >= 44) };
     })()`)
-    check('[移动] 操作面板项与桌面一致', asOK.hasEdit && asOK.hasCopy && asOK.hasDelete, JSON.stringify(asOK))
+    check('[移动] 操作面板项与桌面一致', ['编辑', '重启', '管理面板', '删除'].every((x) => asOK.items.includes(x)), JSON.stringify(asOK.items))
+    check('[移动] 操作面板行高 ≥44', asOK.tall, JSON.stringify(asOK.hs))
     await tapAt(S, '.fm-actionsheet .as-cancel')
-    await new Promise((r) => setTimeout(r, 500))
-    check('[移动] 操作面板可取消关闭', await S.js('!document.querySelector(".fm-actionsheet .as-item")'))
+    await new Promise((r) => setTimeout(r, 700))
+    // el-drawer 关闭后节点仍留在 DOM（只是隐藏），按高度为 0 判关闭
+    check('[移动] 操作面板可取消关闭', await S.js(
+      `(() => { const d = document.querySelector('.fm-actionsheet');` +
+      ` return !d || d.getBoundingClientRect().height === 0 })()`
+    ))
 
     // 卡片数 == 后端代理数
+    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
+    await S.wait('document.querySelector(".fm-more")', 'proxy cards')
     const counts = await S.js(`document.querySelectorAll('.fm-cards .fm-card').length`)
     const api = await S.js(
       `(async () => { const t = localStorage.getItem('frpc_mesh_token');` +
@@ -2712,61 +2750,105 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
     )
     check('[移动] 卡片条数与后端一致', counts === api, `卡片 ${counts} / 接口 ${api}`)
 
-    // 表单能打开、字段单列、能提交
+    // 表单弹层：贴底、字段单列、控件够大、保存可见
     await tapAt(S, '.fm-chips:not(.fm-type-chips) .fm-chip')
     await S.wait('document.querySelector(".fm-type-chips")', 'type chips')
+    // 移动形态下「类型卡」本身就是新建入口（点一下即 openCreate），没有单独的「新增代理」按钮
     await tapAt(S, '.fm-type-chips .fm-chip')
-    await S.wait('document.querySelector(".fm-sheet")', 'form sheet')
+    // fm-form 是表单弹层专用标记：ActionSheet 也带 .fm-sheet、隐藏的信息弹窗也带 .el-dialog，
+    // 用那两个选择器会先量到一个不可见容器，读数没有意义
+    await S.wait('document.querySelector(".fm-form")', 'form sheet')
+    // el-drawer 有 300ms 开启动画，动画里 rect 还在位移，量早了会误判「按钮不在屏内」
+    await new Promise((r) => setTimeout(r, 700))
     const formOK = await S.js(`(() => {
-      const cols = [...document.querySelectorAll('.fm-sheet .el-col')];
+      const sheet = document.querySelector('.fm-form');
+      const cols = [...sheet.querySelectorAll('.el-col')];
       const narrow = cols.filter((c) => c.getBoundingClientRect().width < window.innerWidth * 0.6).length;
-      const ins = [...document.querySelectorAll('.fm-sheet .el-input__inner')];
-      const short = ins.filter((i) => i.getBoundingClientRect().height < 44).length;
-      const tiny = ins.filter((i) => parseInt(getComputedStyle(i).fontSize) < 16).length;
-      const foot = document.querySelector('.fm-sheet .el-drawer__footer');
+      // 高度量 .el-input__wrapper（inner 只有文字行高，量它会误判成不达 44）
+      const wraps = [...sheet.querySelectorAll('.el-input__wrapper')];
+      const short = wraps.filter((w) => Math.round(w.getBoundingClientRect().height) < 44).length;
+      const tiny = [...sheet.querySelectorAll('.el-input__inner')].filter((i) => parseFloat(getComputedStyle(i).fontSize) < 16).length;
+      const foot = sheet.querySelector('.el-drawer__footer, .dialog-footer');
       return {
-        cols: cols.length, narrow, inputs: ins.length, short, tiny,
+        sheetH: Math.round(sheet.getBoundingClientRect().height),
+        cols: cols.length, narrow, wraps: wraps.length, short, tiny,
         footVisible: !!foot && foot.getBoundingClientRect().bottom <= window.innerHeight + 1
       };
     })()`)
-    check('[移动] 表单贴底、字段单列', formOK.cols > 0 && formOK.narrow === 0, JSON.stringify(formOK))
-    check('[移动] 输入框 44 高且字号≥16（防 iOS 放大）', formOK.inputs > 0 && formOK.short === 0 && formOK.tiny === 0, JSON.stringify(formOK))
+    check('[移动] 表单贴底、字段单列', formOK.sheetH > 500 && formOK.cols > 0 && formOK.narrow === 0, JSON.stringify(formOK))
+    check('[移动] 输入框 44 高且字号≥16（防 iOS 聚焦放大）', formOK.wraps > 0 && formOK.short === 0 && formOK.tiny === 0, JSON.stringify(formOK))
     check('[移动] 保存按钮吸底可见', formOK.footVisible, JSON.stringify(formOK))
     await S.shot('form-sheet.png')
 
-    // 触屏说明可点开（FieldHint 在移动形态下是 popover；服务器/仪表盘的表头说明只在桌面出现，故用 /settings 的卡片标题验证）
+    // 服务器表单里的「frpc 版本」说明：触屏必须是可点的问号，而不是只有 hover 才出现的 tooltip
+    await S.cmd('Page.navigate', { url: `${BASE}/instances` })
+    await S.wait('document.querySelector(".fm-more")', 'instance cards for form')
+    await tapAt(S, '.fm-more')
+    await S.wait('document.querySelector(".fm-actionsheet")', 'action sheet for edit')
+    await tapText(S, '编辑', `document.querySelector('.fm-actionsheet')`)
+    await S.wait('document.querySelector(".fm-form")', 'instance form sheet')
+    await new Promise((r) => setTimeout(r, 500))
+    const hintInForm = await S.js(`(() => {
+      const sheet = document.querySelector('.fm-form');
+      return { label: [...sheet.querySelectorAll('.el-form-item__label')].some((l) => /frpc 版本/.test(l.innerText)),
+        qm: sheet.querySelectorAll('.fm-hint-btn').length,
+        tip: sheet.querySelectorAll('.fm-hint-icon').length };
+    })()`)
+    check('[移动] 表单说明是触屏可点的问号', hintInForm.label && hintInForm.qm >= 1 && hintInForm.tip === 0, JSON.stringify(hintInForm))
+    await tapAt(S, '.fm-form .fm-hint-btn')
+    await new Promise((r) => setTimeout(r, 500))
+    check('[移动] 表单问号点得开', await S.js(
+      `!!([...document.querySelectorAll('.el-popover')].some((p) => p.innerText.includes('默认版本')))`
+    ), '浮层里没有说明文字')
+
+    // 设置页的说明同样靠问号读（服务器/仪表盘的表头说明只在桌面出现，故这里用设置页）
     await S.cmd('Page.navigate', { url: `${BASE}/settings` })
     await S.wait('document.querySelector(".fm-hint-btn")', 'hint button')
     await tapAt(S, '.fm-hint-btn')
     await new Promise((r) => setTimeout(r, 500))
-    const hintVisible = await S.js(
+    check('[移动] 说明文字点得开、看得到', await S.js(
       `!!([...document.querySelectorAll('.el-popover')].some((p) => p.innerText.includes('GitHub Releases')))`
-    )
-    check('[移动] 说明文字点得开、看得到', hintVisible, '浮层里找不到说明文字')
+    ), '浮层里找不到说明文字')
 
     // 安全区：viewport 声明 + 样式里真的有 env()（无头 Chrome 解析后恒为 0，只能查声明串）
     check('[移动] viewport 有 viewport-fit=cover', await S.js(
       `document.querySelector('meta[name=viewport]').content.includes('viewport-fit=cover')`
     ))
     check('[移动] 样式里真的写了 env(safe-area-inset)', await S.js(
-      `[...document.styleSheets].some((s) => { try {` +
-      ` return [...s.cssRules].some((r) => /env\\(safe-area-inset/.test(r.cssText))` +
+      `[...document.styleSheets].some((sh) => { try {` +
+      ` return [...sh.cssRules].some((r) => /env\\(safe-area-inset/.test(r.cssText))` +
       ` } catch (e) { return false } })`
-    ), '没有任何规则引用 env(safe-area-inset…')
+    ), '没有任何规则引用 env(safe-area-inset)')
 
     // 卡片上真实新建一条代理（走后端，验证表单在手机上可用）
     await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
     await S.wait('document.querySelector(".fm-type-chips")', 'type chips for create')
     const before = await S.js(`document.querySelectorAll('.fm-cards .fm-card').length`)
     await tapAt(S, '.fm-type-chips .fm-chip')
-    await S.wait('document.querySelector(".fm-sheet form")', 'create form')
-    await S.js(`(() => { const set=(el,v)=>{const d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),'value');` +
-      `d.set.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};` +
-      ` const ins=[...document.querySelectorAll('.fm-sheet .el-input__inner')];` +
-      ` const name=ins.find((i)=>i.placeholder&&i.placeholder.includes('名称')); set(name,'cdp-mobile-prox');` +
-      ` const port=ins.find((i)=>i.closest('.el-form-item')&&/端口/.test(i.closest('.el-form-item').innerText)); set(port,'8088'); })()`)
-    await tapText(S, '保存并应用')
-    await S.wait(`!document.querySelector('.fm-sheet form')`, 'form closed after save')
+    await S.wait('document.querySelector(".fm-form")', 'create form')
+    await new Promise((r) => setTimeout(r, 600))
+    // 按「表单项标签」定位而不是 placeholder：placeholder 里没有「名称」两个字
+    const filled = await S.js(`(() => {
+      const set = (el, v) => {
+        const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')
+        d.set.call(el, v)
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      const labelOf = (it) => { const l = it.querySelector('.el-form-item__label'); return l ? l.innerText : '' }
+      const items = [...document.querySelectorAll('.fm-form .el-form-item')]
+      const done = []
+      for (const [re, val] of [[/代理名称/, 'cdp-mobile-prox'], [/本地端口/, '8088'], [/远程端口/, '22099']]) {
+        const it = items.find((x) => re.test(labelOf(x)))
+        const input = it && it.querySelector('.el-input__inner')
+        if (input) { set(input, val); done.push(labelOf(it).slice(0, 4) + '=' + val) }
+      }
+      return done.join(',')
+    })()`)
+    check('[移动] 表单字段按标签填得进', /cdp-mobile-prox/.test(filled) && /本地端口/.test(filled), `已填: ${filled}`)
+    // 新建是「添加并应用」、编辑是「保存并应用」，按共有的「并应用」匹配
+    await tapText(S, '并应用', `document.querySelector('.fm-form')`)
+    await S.wait(`!document.querySelector('.fm-form') || document.querySelector('.fm-form').getBoundingClientRect().height === 0`, 'form closed after save')
     await new Promise((r) => setTimeout(r, 900))
     const after = await S.js(`document.querySelectorAll('.fm-cards .fm-card').length`)
     const hasNew = await S.js(
@@ -2774,8 +2856,8 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
     )
     check('[移动] 卡片列表能真实新建代理', after === before + 1 && hasNew, `前 ${before} 后 ${after}，含新卡片=${hasNew}`)
 
-    // 删除这条：ActionSheet → 删除 → 必须出现二次确认，确认后才减少
-    await tapAt(S, '.fm-more')
+    // 删除：ActionSheet → 删除 → 必须出现二次确认，确认后才减少
+    await tapInCard(S, 'cdp-mobile-prox', '.fm-more')
     await S.wait('document.querySelector(".fm-actionsheet")', 'action sheet')
     await tapText(S, '删除', `document.querySelector('.fm-actionsheet')`)
     await S.wait('document.querySelector(".el-message-box")', 'second confirm')
@@ -2784,6 +2866,8 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
       ` return b && b.innerText.includes('删除') })()`
     )
     check('[移动] 删除保留二次确认', !!dangerConfirm, '未找到红色「删除」确认按钮')
+    // ActionSheet 的关闭动画还在跑时，它的遮罩会吃掉确认框上的点击，等它落定
+    await new Promise((r) => setTimeout(r, 800))
     await tapText(S, '删除', `document.querySelector('.el-message-box__btns')`)
     await new Promise((r) => setTimeout(r, 1200))
     check('[移动] 确认后卡片减少', await S.js(
@@ -2791,41 +2875,67 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
     ), `回到 ${before} 条`)
 
     // 配置文件底部弹层 + http 剪贴板兜底
+    // 重新进页面：删除留下的提示条浮在顶部会挡住工具栏的坐标点击
+    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
+    await S.wait('document.querySelector(".tab-toolbar-actions")', 'toolbar again')
+    await new Promise((r) => setTimeout(r, 400))
     await tapText(S, '配置文件')
     await S.wait('document.querySelector(".fm-sheet-dialog .config-terminal")', 'config sheet')
+    // 弹层开合有动画，动画没落定就点会打偏
+    await new Promise((r) => setTimeout(r, 600))
     const termH = await S.js(
       `(() => { const t = document.querySelector('.fm-sheet-dialog .config-terminal');` +
       ` const r = t.getBoundingClientRect(); return { h: Math.round(r.height), inView: r.bottom <= window.innerHeight + 1 } })()`
     )
     check('[移动] 配置文件终端在弹层内不超出可视区', termH.inView && termH.h > 120, JSON.stringify(termH))
     await tapText(S, '复制', `document.querySelector('.fm-sheet-dialog')`)
-    await new Promise((r) => setTimeout(r, 600))
+    await new Promise((r) => setTimeout(r, 400))
     check('[移动] http 下复制给出已复制/已选中反馈', await S.js(
       `!![...document.querySelectorAll('.el-message')].find((m) => /已复制|已选中/.test(m.innerText))`
     ), '没有出现复制反馈消息')
-    await tapText(S, '关闭', `document.querySelector('.fm-sheet-dialog')`)
 
     // 汉堡抽屉：打开后 5 项菜单与桌面一致，点一项能跳转且抽屉关闭
     await S.cmd('Page.navigate', { url: `${BASE}/versions` })
     await S.wait('document.querySelector(".hamburger")', 'hamburger')
     await tapAt(S, '.hamburger')
     await S.wait('document.querySelector(".fm-nav-drawer .el-menu-item")', 'drawer menu')
+    await new Promise((r) => setTimeout(r, 600))
     const menuNames = await S.js(
       `[...document.querySelectorAll('.fm-nav-drawer .el-menu-item')].map((e) => e.innerText.trim().replace(/\\s+/g, ''))`
     )
     check(
       '[移动] 抽屉菜单与桌面同 5 项',
-      JSON.stringify(menuNames) ===
-        JSON.stringify(['仪表盘', 'FRPS服务器', '穿透代理', 'frpc版本管理', '设置']),
+      JSON.stringify(menuNames) === JSON.stringify(['仪表盘', 'FRPS服务器', '穿透代理', 'frpc版本管理', '设置']),
       JSON.stringify(menuNames)
     )
-    await tapText(S, '穿透代理', `document.querySelector('.fm-nav-drawer')`)
+    await tapText(S, '穿透代理', `document.querySelector('.fm-nav-drawer')`, '.el-menu-item')
     await new Promise((r) => setTimeout(r, 900))
-    // el-drawer 关闭后节点仍在 DOM（只是隐藏），所以按「量出来高度为 0」判关闭
-    check('[移动] 点菜单跳转后抽屉自动关闭', await S.js(
+    const navState = await S.js(
       `(() => { const d = document.querySelector('.fm-nav-drawer');` +
-      ` return location.pathname === '/proxies' && (!d || d.getBoundingClientRect().height === 0) })()`
-    ), '未跳转或抽屉仍可见')
+      ` return { path: location.pathname, h: d ? Math.round(d.getBoundingClientRect().height) : -1 } })()`
+    )
+    check('[移动] 点菜单跳转后抽屉自动关闭', navState.path === '/proxies' && navState.h <= 0, JSON.stringify(navState))
+
+    // —— 回前台刷新去重 ——
+    await S.setViewport(WIDTH, HEIGHT)
+    await S.cmd('Page.navigate', { url: `${BASE}/instances` })
+    await S.wait('document.querySelector(".fm-cards")', 'mobile instances')
+    await S.cmd('Network.enable')
+    const reqs = []
+    ws.addEventListener('message', (e) => {
+      const m = JSON.parse(e.data)
+      if (m.method === 'Network.requestWillBeSent') {
+        const u = m.params.request.url
+        if (/\/api\/(instances|dashboard)/.test(u)) reqs.push(u.replace(BASE, ''))
+      }
+    })
+    await S.js('Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange"))')
+    await new Promise((r) => setTimeout(r, 400))
+    await S.js('Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange"))')
+    // 页面刚 navigate，10 秒轮询计时器是全新的；700ms 窗口内只有「回前台」这一轮刷新
+    await new Promise((r) => setTimeout(r, 700))
+    check('[移动] 回前台补刷一轮（instances+dashboard）', reqs.length === 2, `捕获 ${reqs.length} 次: ${reqs.join(',')}`)
+
 ```
 
 > `menuNames` 的期望值按 `SideMenu.vue` 里 5 项的真实标题填（Task 3 定的就是「仪表盘 / FRPS 服务器 / 穿透代理 / frpc 版本管理 / 设置」），文字里含空格所以先 `replace(/\s+/g,'')` 再比。抽屉关闭靠 `el-drawer` 卸载，`destroy-on-close` 后节点消失，故用「查不到节点」判定。
