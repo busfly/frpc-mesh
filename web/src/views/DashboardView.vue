@@ -105,8 +105,8 @@
         :rows="dashRows"
         empty-text="暂无 FRPS 服务器，请前往「FRPS 服务器」页面创建"
         more-label="详情"
+        :show-toggle="false"
         @detail="goDetail"
-        @toggle="onToggleEnabledById"
         @more="goDetail"
       />
     </el-card>
@@ -149,7 +149,6 @@ const dashRows = computed<InstanceCardRow[]>(() =>
     status: i.status,
     addr: `${i.server_addr}:${i.server_port}`,
     enabled: i.enabled,
-    toggling: !!toggling[i.id],
     proxiesTotal: i.proxies_total,
     proxiesOnline: i.proxies_online,
     versionLabel: rowVersionLabel(i),
@@ -157,10 +156,6 @@ const dashRows = computed<InstanceCardRow[]>(() =>
   }))
 )
 
-async function onToggleEnabledById(id: number, val: boolean) {
-  const row = dash.value.instances.find((i) => i.id === id)
-  if (row) await onToggleEnabled(row, val)
-}
 
 interface StatCard {
   key: keyof Omit<Dashboard, 'instances'>

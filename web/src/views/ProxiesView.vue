@@ -73,18 +73,21 @@
             </button>
           </div>
 
-          <div v-else class="fm-chips fm-type-chips">
-            <button
-              v-for="t in TYPE_CARDS"
-              :key="t.type"
-              class="fm-chip"
-              @click="openCreate(cur.id, t.type + ':proxy')"
-            >
-              <span class="type-dot" :style="{ background: t.color }"></span>
-              {{ t.name }}
-              <span class="chip-sub">{{ t.sub }}</span>
-            </button>
-          </div>
+          <template v-else>
+            <div class="fm-chips-caption">快速添加（点类型直接新建代理）</div>
+            <div class="fm-chips fm-type-chips">
+              <button
+                v-for="t in TYPE_CARDS"
+                :key="t.type"
+                class="fm-chip"
+                @click="openCreate(cur.id, t.type + ':proxy')"
+              >
+                <span class="type-dot" :style="{ background: t.color }"></span>
+                {{ t.name }}
+                <span class="chip-sub">{{ t.sub }}</span>
+              </button>
+            </div>
+          </template>
 
           <div class="tab-toolbar">
             <div class="section-title">
@@ -700,7 +703,13 @@ function onDelete(instanceId: number, row: Proxy) {
 
 /* 类型快速添加那排芯片：上面已有服务器芯片条，这里不再重复留顶部间距 */
 .fm-type-chips {
-  padding-top: 0;
+  padding-top: 2px;
+}
+
+.fm-chips-caption {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  padding: 6px 0 0;
 }
 
 .tab-toolbar {

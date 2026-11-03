@@ -7,6 +7,8 @@
 .fm-sheet .el-drawer__header {
   margin-bottom: 8px;
   padding: 4px 14px 10px;
+  /* 让把手独占一行（配合 .fm-handle 的 flex-basis: 100%），标题与关闭按钮留在第二行 */
+  flex-wrap: wrap;
 }
 .fm-sheet .el-drawer__body {
   padding: 0 14px;
@@ -28,6 +30,28 @@
   background: #d8dce8;
   margin: 6px auto 2px;
   touch-action: none;
+}
+/* 抽屉头部里 EP 有 `.el-drawer__header > :first-child { flex: 1 }`，会把第一个子元素（把手）
+   拉成一整条并把标题挤到右边；这里用更高特异度压掉它，让把手独占一行，小条靠 ::after 居中画，
+   整行 18px 都是下滑手势的抓取区。操作面板的把手在 body 里，不受这条影响。 */
+.fm-sheet .el-drawer__header .fm-handle {
+  flex: 0 0 100%;
+  width: auto;
+  height: 18px;
+  margin: 0;
+  background: none;
+  position: relative;
+}
+.fm-sheet .el-drawer__header .fm-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: #d8dce8;
 }
 /* 抽屉头部没有 el-dialog__title 样式，代理表单换容器时用这条 */
 .fm-sheet-title {

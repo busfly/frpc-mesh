@@ -317,6 +317,19 @@ function onDelete(row: Instance) {
   margin-bottom: 4px;
 }
 
+@media (max-width: 767px) {
+  /* 窄屏标题与副标题被按钮挤得折行，改成上下排、按钮整宽 */
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .page-head .el-button {
+    width: 100%;
+  }
+}
+
 .th-enabled {
   display: inline-flex;
   align-items: center;

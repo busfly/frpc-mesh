@@ -23,12 +23,14 @@
       <!-- 桌面靠 hover tooltip 才看得见的失败原因，触屏必须有地方读；没有错误就不占一行 -->
       <div v-if="row.error" class="fm-card-err">{{ row.error }}</div>
       <div class="fm-card-foot">
-        <span class="fm-card-k">{{ row.enabled ? '已启用' : '已停用' }}</span>
-        <el-switch
-          :model-value="row.enabled"
-          :loading="row.toggling"
-          @change="emit('toggle', row.id, $event as boolean)"
-        />
+        <template v-if="showToggle">
+          <span class="fm-card-k">{{ row.enabled ? '已启用' : '已停用' }}</span>
+          <el-switch
+            :model-value="row.enabled"
+            :loading="row.toggling"
+            @change="emit('toggle', row.id, $event as boolean)"
+          />
+        </template>
         <button
           class="fm-more"
           :class="{ 'fm-more-text': moreLabel }"
@@ -64,9 +66,16 @@ export interface InstanceCardRow {
   error?: string
 }
 
-withDefaults(defineProps<{ rows: InstanceCardRow[]; emptyText?: string; moreLabel?: string }>(), {
-  moreLabel: ''
-})
+withDefaults(
+  defineProps<{
+    rows: InstanceCardRow[]
+    emptyText?: string
+    moreLabel?: string
+    /** 仪表盘只看状态、启停回服务器页做（规格 §4.2），所以那边要能关掉开关 */
+    showToggle?: boolean
+  }>(),
+  { moreLabel: '', showToggle: true }
+)
 const emit = defineEmits<{
   detail: [number]
   toggle: [number, boolean]
