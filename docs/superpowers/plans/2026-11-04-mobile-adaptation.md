@@ -549,6 +549,8 @@ async function tapText(S, label, rootSel = 'document') {
 }
 
 const PAGES = ['/', '/instances', '/proxies', '/versions', '/settings']
+/** 桌面用表格、移动形态必须换成卡片的三个页面 */
+const TABLE_PAGES = ['/', '/instances', '/proxies']
 
 async function loginIfNeeded(S) {
   await S.cmd('Page.navigate', { url: BASE })
@@ -562,7 +564,11 @@ async function loginIfNeeded(S) {
   await S.wait('document.querySelector(".main-layout")', 'logged in')
 }
 
-/** 页面是否产生横向滚动（排除刻意可横滚的 chip 条内部） */
+/**
+ * 页面在移动形态下不该出现横向溢出。
+ * 注意：EP 表格撑宽时是在自己的 .el-table__body-wrapper 里横滚，文档级 scrollWidth 看不出来，
+ * 所以「有没有表格」必须用下面的结构性断言单独判；这里只兜住真正的文档级溢出。
+ */
 async function noHorizontalOverflow(S) {
   return S.js(`(() => {
     const de = document.documentElement;
@@ -573,7 +579,19 @@ async function noHorizontalOverflow(S) {
       const r = el.getBoundingClientRect();
       return r.right > window.innerWidth + 1 && r.width > 0;
     });
-    return { doc: de.scrollWidth <= window.innerWidth + 1, main: main.scrollWidth <= main.clientWidth + 1, offenders: wide.slice(0, 3).map((e) => e.className || e.tagName) };
+    const scrollers = [...document.querySelectorAll('body *')].filter((el) => {
+      const cs = getComputedStyle(el);
+      if (cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') return false;
+      if (el.matches('.fm-chips, .fm-chips *')) return false;   // chip 条刻意可横滚
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && el.scrollWidth > el.clientWidth + 1;
+    });
+    return {
+      doc: de.scrollWidth <= window.innerWidth + 1,
+      main: main.scrollWidth <= main.clientWidth + 1,
+      offenders: wide.slice(0, 3).map((e) => String(e.className || e.tagName).slice(0, 60)),
+      innerScrollers: scrollers.slice(0, 3).map((e) => String(e.className || e.tagName).slice(0, 60))
+    };
   })()`)
 }
 
@@ -600,9 +618,19 @@ async function run() {
       await new Promise((r) => setTimeout(r, 600))
       const r = await noHorizontalOverflow(S)
       check(`[${path}] 无横向溢出`, r.doc && r.main, JSON.stringify(r))
+      if (TABLE_PAGES.includes(path)) {
+        const shape = await S.js(`(() => ({
+          table: !!document.querySelector('.el-table'),
+          cards: !!document.querySelector('.fm-cards')
+        }))()`)
+        check(`[${path}] 移动形态不渲染表格`, !shape.table, JSON.stringify(shape))
+        check(`[${path}] 移动形态渲染卡片列表`, shape.cards, JSON.stringify(shape))
+      }
     }
     // —— 桌面回归基线 1440×844 ——
     await S.setViewport(1440, 844)
+    // 视口改动要等一帧再导航：MainLayout 的折叠初值读 window.innerWidth，抢跑会拿到旧宽度
+    await new Promise((r) => setTimeout(r, 400))
     await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
     await S.wait('document.querySelector(".el-table") || document.querySelector(".el-empty")', 'desktop proxies table')
     check('[桌面] 代理页仍是表格形态', await S.js('!!document.querySelector(".el-table")'))
@@ -635,7 +663,7 @@ docker run -d --name fm-mobile-test -p 127.0.0.1:18096:18080 -v /tmp/fm-mobile-d
 sleep 8 && BASE=http://127.0.0.1:18096 node scripts/verify-mobile.mjs
 ```
 
-Expected: 脚本能跑完并打印结果。此时**移动视口的「无横向溢出」应当 FAIL**（表格 850–1040px 撑破 390px 视口，offenders 里能看到 `el-table__body` 之类），桌面三条应当 PASS。若桌面三条也 FAIL，先修脚手架（选择器/登录/seed），别往下走。
+Expected: 脚本能跑完并打印结果。此时**三个表格页的「移动形态不渲染表格」「移动形态渲染卡片列表」共 6 条应当 FAIL**（现在只有表格），「无横向溢出」大多会 PASS——EP 表格撑宽时是在自己 body-wrapper 里横滚，文档级 `scrollWidth` 不报警，所以结构性断言才是真红灯。桌面三条应当 PASS；若桌面三条 FAIL，先修脚手架（选择器/登录/seed），别往下走。
 
 - [ ] **Step 3: 提交**
 
@@ -1692,7 +1720,7 @@ rm -rf /tmp/fm-mobile-data && docker run -d --name fm-mobile-test -p 127.0.0.1:1
 sleep 8 && BASE=http://127.0.0.1:18096 node scripts/verify-mobile.mjs
 ```
 
-Expected: `[/instances]`、`[/]` 两条「无横向溢出」转 PASS；桌面三条仍 PASS。
+Expected: `[/]`、`[/instances]` 的「移动形态不渲染表格」「移动形态渲染卡片列表」4 条转 PASS（`/proxies` 的 2 条仍 FAIL，Task 8 才修）；桌面三条仍 PASS。
 
 - [ ] **Step 6: 提交**
 
@@ -1835,7 +1863,7 @@ const emit = defineEmits<{
             v-for="t in TYPE_CARDS"
             :key="t.type"
             class="type-card"
-            @click="openCreate(activeInstance.id, t.type + ':proxy')"
+            @click="openCreate(cur.id, t.type + ':proxy')"
           >
             <el-icon class="type-card-icon" :style="{ color: t.color }">
               <component :is="t.icon" />
@@ -1855,7 +1883,7 @@ const emit = defineEmits<{
             v-for="t in TYPE_CARDS"
             :key="t.type"
             class="fm-chip"
-            @click="openCreate(activeInstance.id, t.type + ':proxy')"
+            @click="openCreate(cur.id, t.type + ':proxy')"
           >
             <span class="type-dot" :style="{ background: t.color }"></span>
             {{ t.name }}
@@ -1867,17 +1895,17 @@ const emit = defineEmits<{
           <div class="section-title">
             已配置代理
             <span class="text-muted section-count">
-              （在线 {{ onlineCount(activeInstance.id) }} / 共 {{ (proxiesMap[activeInstance.id] || []).length }} 条）
+              （在线 {{ onlineCount(cur.id) }} / 共 {{ (proxiesMap[cur.id] || []).length }} 条）
             </span>
           </div>
           <div class="tab-toolbar-actions">
-            <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(activeInstance, 'config')">
+            <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(cur, 'config')">
               配置文件
             </el-button>
-            <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(activeInstance, 'logs')">
+            <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(cur, 'logs')">
               运行日志
             </el-button>
-            <el-button type="success" round :loading="!!pingingMap[activeInstance.id]" @click="onPing(activeInstance.id)">
+            <el-button type="success" round :loading="!!pingingMap[cur.id]" @click="onPing(cur.id)">
               全部 Ping
             </el-button>
           </div>
@@ -1885,9 +1913,9 @@ const emit = defineEmits<{
 
         <el-table
           v-if="!isMobile"
-          :data="proxiesMap[activeInstance.id] || []"
+          :data="proxiesMap[cur.id] || []"
           :row-class-name="rowClassName"
-          v-loading="!!loadingMap[activeInstance.id]"
+          v-loading="!!loadingMap[cur.id]"
           size="small"
           stripe
           empty-text="暂无代理，点击上方类型卡片快速添加"
@@ -1898,9 +1926,9 @@ const emit = defineEmits<{
         <ProxyCardList
           v-else
           :rows="proxyCardRows"
-          :remote-host="remoteHost(activeInstance)"
+          :remote-host="remoteHost(cur)"
           empty-text="暂无代理，点上方类型 chip 快速添加"
-          @toggle="(p, v) => onToggleProxy(activeInstance!.id, p, v)"
+          @toggle="(p, v) => onToggleProxy(cur.id, p, v)"
           @more="openProxyActions"
         />
       </template>
@@ -1929,6 +1957,23 @@ import ActionSheet, { type ActionItem } from '../components/mobile/ActionSheet.v
 import { useIsMobile } from '../composables/useMediaQuery'
 ```
 
+`Instance` 类型也要进来（`cur` 的断言用得到）：把 `ProxiesView.vue:276` 的 `import type { Proxy } from '../api/types'` 改成 `import type { Instance, Proxy } from '../api/types'`。
+
+> **搬桌子时必须跟着改的一处**：原来 8 个列定义在 `v-for="inst in store.instances"` 的作用域里，现在挪到共用区后那个 `inst` 不存在了。逐列把模板里的 `inst.id` 换成 `cur.id`、`remoteHost(inst)` 换成 `remoteHost(cur)`：
+>
+> ```bash
+> python3 - <<'PY'
+> p = 'web/src/views/ProxiesView.vue'
+> s = open(p).read()
+> lo, hi = s.index('<el-table\n          v-if="!isMobile"'), s.index('</el-table>')
+> seg = s[lo:hi].replace('inst.id', 'cur.id').replace('remoteHost(inst)', 'remoteHost(cur)')
+> open(p, 'w').write(s[:lo] + seg + s[hi:])
+> PY
+> grep -n "inst\.id\|remoteHost(inst)" web/src/views/ProxiesView.vue
+> ```
+>
+> Expected: grep 只剩 Tab 标签与 chip 条里的 `inst`（那两处仍在 `v-for` 作用域内，必须保留），表格列定义里一条不剩。
+
 在 `const activeTab = ref('')` 之后加：
 
 ```ts
@@ -1941,6 +1986,13 @@ const activeInstance = computed(() => {
   const id = Number(activeTab.value) || 0
   return store.instances.find((i) => i.id === id) || null
 })
+
+/**
+ * 内容区模板里用它取实例：`cur` 类型上非空。
+ * 列定义在 `#default="{ row }"` 闭包里，`v-if="activeInstance"` 的空值收窄传不进去，
+ * 直接写 `activeInstance.id` 会被 vue-tsc 判成可能为 null。渲染仍由那层 v-if 兜住。
+ */
+const cur = computed(() => activeInstance.value as Instance)
 
 const proxyCardRows = computed<ProxyCardRow[]>(() => {
   const inst = activeInstance.value
@@ -2278,7 +2330,7 @@ rm -rf /tmp/fm-mobile-data && docker run -d --name fm-mobile-test -p 127.0.0.1:1
 sleep 8 && BASE=http://127.0.0.1:18096 node scripts/verify-mobile.mjs
 ```
 
-Expected: 全部移动页面溢出断言 PASS；桌面三条 PASS。
+Expected: 移动结构性断言 6 条全 PASS（三个表格页都换成卡片了）；溢出断言与桌面三条 PASS。
 
 - [ ] **Step 10: 真机手感自查（390×844 设备模式）**
 
@@ -2430,7 +2482,7 @@ rm -rf /tmp/fm-mobile-data && docker run -d --name fm-mobile-test -p 127.0.0.1:1
 sleep 8 && BASE=http://127.0.0.1:18096 node scripts/verify-mobile.mjs
 ```
 
-Expected: 五个页面溢出断言全 PASS + 桌面三条 PASS。
+Expected: 移动段落全 PASS（含 6 条结构性断言）+ 桌面三条 PASS。
 
 - [ ] **Step 6: 提交**
 

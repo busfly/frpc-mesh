@@ -184,7 +184,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 视口 375×812 / 390×844 / 430×932，iPhone UA，`deviceScaleFactor: 3`，断言清单：
 
-1. 五个页面 `document.documentElement.scrollWidth <= innerWidth`（无横向滚动）。
+1. 五个页面 `document.documentElement.scrollWidth <= innerWidth`（无横向滚动）。**实测补充**：EP 表格列总宽超出视口时是在 `.el-table__body-wrapper` 内部横滚，文档级 `scrollWidth` 不报警（脚手架第一版就是这么漏掉的），所以再加两条结构性断言：三个表格页（`/`、`/instances`、`/proxies`）在移动形态下不得渲染 `.el-table`，且必须渲染 `.fm-cards`。
 2. 移动形态下主要可点元素（卡片操作、「⋯」、启用开关、按钮、输入框、chip）尺寸 ≥44×44，相邻可点间距 ≥8px；次要文字按钮按 §8 的放宽口径断言（热区 ≥32px 高）。
 3. 汉堡 → 左抽屉可打开，菜单项与桌面完全一致（同一份 `SideMenu`），点击能跳转且抽屉自动关闭。
 4. 代理页 chip 条可横向滚动，切换后卡片数据随之变化且条数 == store 里该实例代理数。
