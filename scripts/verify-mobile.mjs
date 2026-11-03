@@ -24,7 +24,15 @@ const SEED = [
   { name: 'demo-a', addr: '127.0.0.1', port: 7600, domain: 'frps-a.example.com', proxies: [
       { name: 'demo-ssh', type: 'tcp', local_ip: '127.0.0.1', local_port: 22, remote_port: 22001 },
       { name: 'demo-web', type: 'http', local_ip: '127.0.0.1', local_port: 8080, custom_domains: 'web.example.com' },
-      { name: 'demo-off', type: 'udp', local_ip: '127.0.0.1', local_port: 53, remote_port: 5353, enabled: false }
+      { name: 'demo-off', type: 'udp', local_ip: '127.0.0.1', local_port: 53, remote_port: 5353, enabled: false },
+      // 列表要够长才谈得上「吸顶」与滚动，凑够 10 条
+      ...Array.from({ length: 7 }, (_, k) => ({
+        name: `demo-http-${k + 1}`,
+        type: 'http',
+        local_ip: '127.0.0.1',
+        local_port: 9000 + k,
+        custom_domains: `app${k + 1}.example.com`
+      }))
     ] },
   { name: 'demo-b', addr: '127.0.0.1', port: 7601, domain: '', proxies: [
       { name: 'demo-p2p', type: 'xtcp', local_ip: '127.0.0.1', local_port: 0, remote_port: 0 }
@@ -432,6 +440,67 @@ async function run() {
       `!!([...document.querySelectorAll('.el-popover')].some((p) => p.innerText.includes('默认版本')))`
     ), '浮层里没有说明文字')
 
+    // chip 条「吸顶」：EP 的 .el-card 带 overflow:hidden，sticky 的参照会变成那个永不滚动的盒子，
+    // 宣称的吸顶其实从未生效 —— 滚一段再量，必须还贴在可视区顶部
+    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
+    await S.wait('document.querySelector(".fm-chips:not(.fm-type-chips)")', 'chip row')
+    const sticky = await S.js(
+      `(() => { const row = document.querySelector('.fm-chips:not(.fm-type-chips)');` +
+      ` const sc = document.querySelector('.main-content'); sc.scrollTop = 420;` +
+      ` const r = row.getBoundingClientRect();` +
+      ` return { scrolled: sc.scrollTop > 100, top: Math.round(r.top), h: Math.round(r.height),` +
+      ` stuck: r.height > 0 && r.top >= 0 && r.top < 120 } })()`
+    )
+    check('[移动] 服务器 chip 条真的吸顶', sticky.scrolled && sticky.stuck, JSON.stringify(sticky))
+
+    // 底部弹层的圆角与限高：EP 的抽屉方向类是裸 `btt`，写成 el-drawer--bottom 会永不命中
+    const sheetShape = await S.js(
+      `(() => { const el = document.querySelector('.fm-sheet.btt');` +
+      ` if (!el) return { found: false }; const cs = getComputedStyle(el);` +
+      ` return { found: true, radius: cs.borderTopLeftRadius, maxH: cs.maxHeight } })()`
+    )
+    check('[移动] 底部弹层圆角与限高真的生效', sheetShape.found && parseFloat(sheetShape.radius) >= 12, JSON.stringify(sheetShape))
+
+    // 下滑关闭手势：在把手上造 touch 序列，位移 >80px 应当关掉弹层（规格 §6.2 承诺过，之前只测了取消按钮）
+    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
+    await S.wait('document.querySelector(".fm-type-chips")', 'chips for swipe')
+    await tapAt(S, '.fm-type-chips .fm-chip')
+    await S.wait('document.querySelector(".fm-form")', 'form for swipe')
+    await new Promise((r) => setTimeout(r, 700))
+    const grab = await S.js(
+      `(() => { const h = document.querySelector('.fm-form .fm-handle');` +
+      ` const r = h.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } })()`
+    )
+    for (const [type, dy] of [['touchStart', 0], ['touchMove', 30], ['touchMove', 60], ['touchMove', 120], ['touchEnd', 120]]) {
+      await S.cmd('Input.dispatchTouchEvent', {
+        type,
+        touchPoints: type === 'touchEnd' ? [] : [{ x: grab.x, y: grab.y + dy }]
+      })
+      await new Promise((r) => setTimeout(r, 60))
+    }
+    await new Promise((r) => setTimeout(r, 700))
+    check('[移动] 把手下滑能关闭弹层', await S.js(
+      `(() => { const el = document.querySelector('.fm-form');` +
+      ` return !el || el.getBoundingClientRect().height === 0 })()`
+    ), '下滑 120px 后表单弹层仍在')
+
+    // 对话框侧的弹层（拷贝代理）也要 44 高输入 + 16px 字号 + 44 主按钮：它 teleport 到 body，拿不到页面内规则
+    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
+    await S.wait('document.querySelector(".fm-more")', 'cards for copy dialog')
+    await tapAt(S, '.fm-more')
+    await S.wait('document.querySelector(".fm-actionsheet")', 'sheet for copy')
+    await tapText(S, '拷贝', `document.querySelector('.fm-actionsheet')`)
+    await S.wait('document.querySelector(".fm-sheet-dialog .el-select__wrapper")', 'copy dialog')
+    await new Promise((r) => setTimeout(r, 600))
+    const copySheet = await S.js(
+      `(() => { const w = document.querySelector('.fm-sheet-dialog .el-select__wrapper');` +
+      ` const b = document.querySelector('.fm-sheet-dialog .el-button--primary');` +
+      ` return { h: Math.round(w.getBoundingClientRect().height), fs: parseFloat(getComputedStyle(w).fontSize),` +
+      ` btnH: b ? Math.round(b.getBoundingClientRect().height) : 0 } })()`
+    )
+    check('[移动] 对话框弹层输入 44 高且字号≥16', copySheet.h >= 44 && copySheet.fs >= 16, JSON.stringify(copySheet))
+    check('[移动] 对话框弹层主按钮 ≥44', copySheet.btnH >= 44, JSON.stringify(copySheet))
+
     // 设置页的说明同样靠问号读（服务器/仪表盘的表头说明只在桌面出现，故这里用设置页）
     await S.cmd('Page.navigate', { url: `${BASE}/settings` })
     await S.wait('document.querySelector(".fm-hint-btn")', 'hint button')
@@ -578,18 +647,35 @@ async function run() {
     check('[桌面] 侧栏存在且 220px', await S.js(`(() => { const a = document.querySelector('.el-aside'); return a && a.getBoundingClientRect().width === 220 })()`))
     check('[桌面] 无移动卡片列表', await S.js('!document.querySelector(".fm-cards")'))
     await S.shot('desktop-proxies.png')
+
+  // —— 登录页（清掉登录态单独看一档：规格 §4.1 要求 44 高输入 + 16px 字号，之前脚本没看过登录页）——
+  await S.setViewport(WIDTH, HEIGHT)
+  await S.js('localStorage.clear()')
+  await S.cmd('Page.navigate', { url: `${BASE}/login` })
+  await S.wait('document.querySelector(".login-btn")', 'login page')
+  await new Promise((r) => setTimeout(r, 500))
+  const login = await S.js(
+    `(() => { const w = document.querySelector('.login-card .el-input__wrapper');` +
+    ` const i = document.querySelector('.login-card .el-input__inner');` +
+    ` const b = document.querySelector('.login-btn');` +
+    ` return { h: Math.round(w.getBoundingClientRect().height),` +
+    ` fs: parseFloat(getComputedStyle(i).fontSize), btn: Math.round(b.getBoundingClientRect().height) } })()`
+  )
+  check('[移动] 登录页输入 44 高、字号≥16、按钮 44', login.h >= 44 && login.fs >= 16 && login.btn >= 44, JSON.stringify(login))
+  await S.shot('mobile-login.png')
   } finally {
     ws.close()
     chrome.kill('SIGKILL')
   }
+
   for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.detail ? ' :: ' + r.detail : ''}`)
   const failed = results.filter((r) => !r.ok).length
   console.log(`\n共 ${results.length} 项，失败 ${failed}`)
-  process.exit(failed ? 1 : 0)
+  process.exitCode = failed ? 1 : 0
 }
 
 run().catch((e) => {
   console.error('脚本异常:', e.message)
   for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.name}${r.detail ? ' :: ' + r.detail : ''}`)
-  process.exit(2)
+  process.exitCode = 2
 })

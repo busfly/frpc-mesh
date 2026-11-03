@@ -28,7 +28,14 @@
     <el-container class="right-container">
       <el-header class="topbar" height="56px">
         <div class="topbar-left">
-          <button v-if="isMobile" class="hamburger" aria-label="打开菜单" @click="navOpen = true">
+          <button
+            v-if="isMobile"
+            class="hamburger"
+            aria-label="打开菜单"
+            :aria-expanded="navOpen"
+            aria-controls="fm-nav-drawer"
+            @click="navOpen = true"
+          >
             <span class="bars"></span>
           </button>
           <span class="topbar-title">{{ currentTitle }}</span>
@@ -95,6 +102,7 @@
 
     <!-- 移动形态导航：左侧覆盖抽屉，菜单项与侧栏共用同一份 SideMenu -->
     <el-drawer
+      id="fm-nav-drawer"
       v-model="navOpen"
       direction="ltr"
       size="260px"

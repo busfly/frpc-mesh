@@ -16,6 +16,7 @@
       :rules="rules"
       label-width="110px"
       label-position="top"
+      :scroll-to-error="isMobile"
     >
       <el-divider content-position="left">基本信息</el-divider>
       <el-form-item label="服务器名称（别名）" prop="name">

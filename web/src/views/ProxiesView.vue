@@ -37,6 +37,7 @@
             class="fm-chip"
             :class="{ on: String(inst.id) === activeTab }"
             role="tab"
+            :aria-selected="String(inst.id) === activeTab"
             @click="activeTab = String(inst.id)"
           >
             <span
@@ -220,7 +221,7 @@
       :width="isMobile ? '100%' : '780px'"
       :top="isMobile ? undefined : '6vh'"
       :class="isMobile ? 'fm-sheet-dialog' : ''"
-      modal-class="fm-dialog-overlay"
+      :modal-class="isMobile ? 'fm-dialog-overlay' : undefined"
       append-to-body
       destroy-on-close
     >
@@ -234,7 +235,7 @@
       title="拷贝代理到服务器"
       :width="isMobile ? '100%' : '440px'"
       :class="isMobile ? 'fm-sheet-dialog' : ''"
-      modal-class="fm-dialog-overlay"
+      :modal-class="isMobile ? 'fm-dialog-overlay' : undefined"
       append-to-body
     >
       <el-form label-position="top">
@@ -510,8 +511,8 @@ onMounted(() => {
   if (n) loadProxies(n)
   // 在线状态定时自愈：frpc 重启后数秒内日志才确认隧道，避免停留在过期状态
   onlineTimer = window.setInterval(() => {
-    const cur = currentInstanceId()
-    if (cur && loadedMap[cur]) loadOnline(cur)
+    const id = currentInstanceId()
+    if (id && loadedMap[id]) loadOnline(id)
   }, 10000)
 })
 
@@ -703,6 +704,8 @@ function onDelete(instanceId: number, row: Proxy) {
 
 /* 类型快速添加那排芯片：上面已有服务器芯片条，这里不再重复留顶部间距 */
 .fm-type-chips {
+  /* 两排都 sticky top:0 会在滚动时互相压住；只有「切服务器」那排需要常驻 */
+  position: static;
   padding-top: 2px;
 }
 
@@ -851,6 +854,16 @@ function onDelete(instanceId: number, row: Proxy) {
 }
 
 @media (max-width: 767px) {
+  /* EP 的 .el-card 自带 overflow: hidden，chip 条 sticky 的参照会变成这个永不滚动的盒子，
+     吸顶实际从未生效；窄屏放开它（桌面形态不受影响） */
+  .card {
+    overflow: visible;
+  }
+
+  .card :deep(.el-card__body) {
+    overflow: visible;
+  }
+
   /* 窄屏：标题与操作各占一行，避免「已配置代理」被挤成三行 */
   .tab-toolbar {
     flex-direction: column;

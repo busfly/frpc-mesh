@@ -37,6 +37,9 @@ export const useInstancesStore = defineStore('instances', () => {
 
   // 同一时刻只允许一个在途刷新：轮询、手动刷新、回前台刷新共用它，避免互相覆盖与并发打后端
   let pending: Promise<void> | null = null
+  // 在途期间又有人要刷新（用户刚点保存/重启，等着看新状态）：记一笔，这轮结束后补跑一次，
+  // 否则复用到动作发起前的旧响应，界面要干等下一个 10 秒才纠正
+  let dirty = false
 
   async function doRefreshSilently() {
     try {
@@ -51,7 +54,17 @@ export const useInstancesStore = defineStore('instances', () => {
 
   /** 静默刷新（轮询/回前台/操作后回刷），后端不可用时不打扰用户 */
   function refreshSilently() {
-    if (!pending) pending = doRefreshSilently().finally(() => { pending = null })
+    if (pending) {
+      dirty = true
+      return pending
+    }
+    pending = doRefreshSilently().finally(() => {
+      pending = null
+      if (dirty) {
+        dirty = false
+        refreshSilently()
+      }
+    })
     return pending
   }
 

@@ -240,5 +240,13 @@ async function onSubmit() {
   .login-btn {
     min-height: 44px;
   }
+  /* 规格要求输入控件 44 高、16px 字号（iOS 聚焦不放大）；size=large 只有 40 */
+  .login-card :deep(.el-input) {
+    --el-component-size: 44px;
+    --el-input-height: 44px;
+  }
+  .login-card :deep(.el-input__inner) {
+    font-size: 16px;
+  }
 }
 </style>

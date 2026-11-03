@@ -6,11 +6,21 @@
     @update:model-value="emit('update:modelValue', $event)"
     @open="onOpen"
   >
-    <template #header>
+    <template #header="{ titleId, titleClass }">
       <div ref="handleEl" v-if="isMobile" class="fm-handle"></div>
-      <span :class="isMobile ? 'fm-sheet-title' : 'el-dialog__title'">{{ dialogTitle }}</span>
+      <!-- 自定义 header 会顶掉 EP 自带的标题节点，aria-labelledby 指向的 id 必须自己接上 -->
+      <span :id="titleId" :class="isMobile ? 'fm-sheet-title' : titleClass || 'el-dialog__title'">{{
+        dialogTitle
+      }}</span>
     </template>
-    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" hide-required-asterisk>
+        <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-position="top"
+      hide-required-asterisk
+      :scroll-to-error="isMobile"
+    >
       <!-- stcp / xtcp / sudp：选择提供方 / 访问方 -->
       <el-segmented
         v-if="isSecretType"

@@ -49,7 +49,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 **形态切换不丢状态**（这是本设计最容易做砸的地方，列为硬约束）：
 
 1. 表单的编辑态 model 一律放在表单组件自身，且移动/桌面**共用同一个组件**，只换外层容器（dialog ↔ bottom sheet），不做两套表单。
-2. 弹层关闭不销毁内容：`el-drawer` 不设 `destroy-on-close`。
+2. 弹层关闭不销毁内容：~~`el-drawer` 不设 `destroy-on-close`~~ —— **实测后撤销**：两个表单都在 `@open` 里按 props 重建表单状态，留着 DOM 也留不住半填内容，反而与桌面既有行为不一致。结论是保持 `destroy-on-close`，关闭弹层即丢弃未保存输入（与桌面一致），文案上不承诺「回来还在」。
 3. 列表数据与状态计算全在 Pinia store 与 `utils/status.ts`（已有 `statusText` / `statusDotColor` / `proxyTypeLabel` / `proxyTypeColor`），卡片组件只接 props、只发事件，**不复制一份业务逻辑**。
 4. 轮询与下载任务状态本就在 store 里，组件卸载不影响；不在页面级 `onUnmounted` 停全局轮询。
 
@@ -111,7 +111,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 ### 4.6 设置 `SettingsView`
 
 - 现有 `el-col :xs="24"` 两列自动折成一列，卡片顺序不变（运行配置 → 检查新版本 → 备份与恢复 → 修改密码 → 关于）。
-- 容器升级分步引导**仍默认收起**（与桌面一致，避免卡片高度暴涨）；引导内每条命令行 `word-break` 已有，复制按钮触摸目标放大到 44×44。
+- 容器升级分步引导**仍默认收起**（与桌面一致，避免卡片高度暴涨）；引导内每条命令行 `word-break` 已有；复制按钮属 §8 的「次要文字按钮」档，热区用 padding 扩到 ≥32px 高即可（与桌面观感一致，不为了凑 44 把次要控件撑大）。
 - 表单类（修改密码、导入备份）字段 `:xs="24"`、输入框 44px。
 
 ## 5. 新增组件与 composable
@@ -133,7 +133,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 **容器不新建包装组件**（降低桌面回归面）：
 
-- `ProxyFormDialog`（`el-dialog`）保持**同一份模板**，只在 `isMobile` 时把 `width` 换成 `100%` 并挂 `.fm-sheet` 类，用 CSS 把对话框改成贴底、圆角、内层滚动的底部弹层；头部加把手并接 `useSwipeToClose`。（实测坑：EP 有 `.el-drawer__header > :first-child { flex: 1 }`，把手作为 header 第一个子元素会被拉成一整条灰带、把标题挤到右边；用 `.fm-sheet .el-drawer__header .fm-handle` 以更高特异度压成 `flex: 0 0 100%` 独占一行，小灰条改由 `::after` 居中画，整行 18px 都是下滑抓取区。）
+- `ProxyFormDialog` 保持**同一份模板**，用 `<component :is>` 在 `isMobile` 时把容器从 `el-dialog` 换成 `el-drawer direction=btt`（挂 `.fm-sheet .fm-form`），头部加把手并接 `useSwipeToClose`；桌面仍是 720px 对话框。信息类弹窗（配置文件/运行日志/拷贝代理/版本说明）不改容器，靠 `.fm-dialog-overlay` + `.fm-sheet-dialog` 把 `el-dialog` 变成贴底弹层，且 `modal-class` 只在移动形态挂上。（实测坑：EP 有 `.el-drawer__header > :first-child { flex: 1 }`，把手作为 header 第一个子元素会被拉成一整条灰带、把标题挤到右边；用 `.fm-sheet .el-drawer__header .fm-handle` 以更高特异度压成 `flex: 0 0 100%` 独占一行，小灰条改由 `::after` 居中画，整行 18px 都是下滑抓取区。）
 - `InstanceFormDrawer`（`el-drawer`）EP 原生支持 `direction`，`isMobile` 时改 `direction="btt"` + `size="92%"`，其余不动。
 - 配置文件 / 运行日志弹窗（`ProxiesView` 的 `infoVisible`）与拷贝弹窗同理走 `.fm-sheet`。
 
@@ -147,9 +147,9 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 4. 端口/数值字段加 `inputmode="numeric"`；密码字段 `autocomplete="new-password"`；数字键盘不弹全键盘。
 5. 「保存」吸底（footer 区），`padding-bottom: calc(10px + env(safe-area-inset-bottom))`，不被键盘与浏览器工具栏盖住。
 6. 校验失败：`scrollIntoView({ block: 'center' })` 定位到第一个错误字段。
-7. iOS 键盘顶起：监听 `visualViewport.resize`，focus 后延迟约 300ms 再滚动定位；不支持时退化为「不自动滚动」，不阻塞输入。
+7. iOS 键盘顶起：~~监听 `visualViewport.resize` 做补偿~~ —— **本轮不做**：保存按钮已在 footer 里常驻可见，iOS 自身会把聚焦输入框滚进视野，再加一层补偿容易和浏览器滚动打架。真机若确认有遮挡，再按本条补。
 8. **弹层内不再嵌套弹层**：需要二次确认（删除、覆盖导入）时先关当前 sheet，再开确认面板——避免 z-index、焦点锁与滚动锁互相打架。
-9. 滚动锁：统一用 `html.is-sheet-open` 一个类管理，关掉 EP 自带 `lock-scroll`；锁定时用 `position: fixed` + 记录/恢复 `scrollY`，**不用 `body{overflow:hidden}`**（微信 webview 上会锁死页面）。
+9. 滚动锁：~~自管 `html.is-sheet-open` + `position: fixed`~~ —— **本轮沿用 EP 默认 `lock-scroll`**，不自己接管。风险是微信 webview 上的锁滚表现未知，故列入第 11 节真机人工清单：「弹层打开时背景页面是否还能跟着滚、关闭后是否卡在锁定状态」。
 
 ## 7. 刷新与轮询
 
@@ -210,6 +210,8 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 7. 填表单按 `.el-form-item__label` 的文字定位字段，别按 placeholder —— placeholder 里写的是「例如: web-server」，不含「名称」，按 placeholder 找会找不到，而页面里的 JS 异常被 CDP 吞掉后只会表现成「保存没生效」。
 
 **组件级冒烟（可选，不阻塞本轮）**：`useSwipeToClose` 阈值、`useIsMobile` 切换、卡片列表渲染与事件冒泡。引入 vitest 成本约 1–2 天，本轮以 CDP 端到端为准，vitest 留下一轮再定。
+
+**本轮没实现、只能靠真机确认的点**：iOS 键盘顶起后的表单可见性（§6.7）、微信 webview 的弹层滚动锁（§6.9）、刘海与底部横条的安全区实际留白（无头环境恒为 0）。
 
 **人工真机清单**（交付给用户自测）：iPhone Safari 直连内网 IP、微信里点开链接、外出走 frp 隧道三种路径各跑一遍登录 → 看代理状态 → 启停一个代理 → 新建一个代理 → 看运行日志。
 

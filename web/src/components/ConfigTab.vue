@@ -2,7 +2,7 @@
   <div>
     <div class="tab-toolbar">
       <span class="text-muted count-tip">配置文件预览（高级配置页面）：后端生成的 frpc TOML，只读</span>
-      <div>
+      <div class="toolbar-right">
         <el-button text :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button type="primary" plain size="small" :icon="CopyDocument" @click="copy">
           复制

@@ -298,7 +298,7 @@
       :title="notesTitle"
       :width="isMobile ? '100%' : '640px'"
       :class="isMobile ? 'fm-sheet-dialog' : ''"
-      modal-class="fm-dialog-overlay"
+      :modal-class="isMobile ? 'fm-dialog-overlay' : undefined"
     >
       <div v-if="info" class="notes-head">
         <span v-if="info.published_at" class="text-muted">
