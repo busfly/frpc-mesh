@@ -92,13 +92,7 @@
             <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
             <el-table-column label="状态" width="80">
               <template #default="{ row }">
-                <el-tag v-if="!row.enabled" type="warning" effect="plain" size="small" round>
-                  已禁用
-                </el-tag>
-                <el-tag v-else-if="isOnline(inst.id, row)" type="success" effect="dark" size="small" round>
-                  在线
-                </el-tag>
-                <el-tag v-else type="info" effect="plain" size="small" round>离线</el-tag>
+                <ProxyStatusCell :proxy="row" :online="isOnline(inst.id, row)" />
               </template>
             </el-table-column>
             <el-table-column label="启用" width="70">
@@ -112,67 +106,17 @@
             </el-table-column>
             <el-table-column label="本地地址 / 访问摘要" min-width="170" show-overflow-tooltip>
               <template #default="{ row }">
-                <el-link
-                  v-if="row.kind === 'visitor' && row.bind_port"
-                  type="primary"
-                  :underline="false"
-                  class="mono"
-                  :href="`http://${row.bind_addr || '127.0.0.1'}:${row.bind_port}`"
-                  target="_blank"
-                >
-                  {{ row.bind_addr || '127.0.0.1' }}:{{ row.bind_port }}
-                </el-link>
-                <span v-else-if="row.kind === 'visitor'" class="mono">
-                  访问 → {{ row.server_name || '-' }}
-                </span>
-                <el-link
-                  v-else-if="row.local_port"
-                  type="primary"
-                  :underline="false"
-                  class="mono"
-                  :href="`http://${row.local_ip || '127.0.0.1'}:${row.local_port}`"
-                  target="_blank"
-                >
-                  {{ row.local_ip || '127.0.0.1' }}:{{ row.local_port }}
-                </el-link>
-                <span v-else class="mono">{{ row.local_ip || '127.0.0.1' }}</span>
+                <ProxyLocalCell :proxy="row" />
               </template>
             </el-table-column>
             <el-table-column label="远程端口 / 域名" min-width="130" show-overflow-tooltip>
               <template #default="{ row }">
-                <el-link
-                  v-if="(row.type === 'tcp' || row.type === 'udp') && row.remote_port"
-                  type="primary"
-                  :underline="false"
-                  class="mono"
-                  :href="`http://${remoteHost(inst)}:${row.remote_port}`"
-                  target="_blank"
-                >
-                  {{ row.remote_port }}
-                </el-link>
-                <span v-else-if="row.type === 'tcp' || row.type === 'udp'" class="mono">随机</span>
-                <el-link
-                  v-else-if="row.custom_domains"
-                  type="primary"
-                  :underline="false"
-                  class="mono"
-                  :href="`${row.type === 'https' ? 'https' : 'http'}://${row.custom_domains.split(',')[0].trim()}/`"
-                  target="_blank"
-                >
-                  {{ row.custom_domains.split(',')[0].trim() }}
-                </el-link>
-                <span v-else-if="row.subdomain" class="mono">子域名: {{ row.subdomain }}</span>
-                <span v-else class="text-muted">-</span>
+                <ProxyRemoteCell :proxy="row" :remote-host="remoteHost(inst)" />
               </template>
             </el-table-column>
             <el-table-column label="延迟" width="80">
               <template #default="{ row }">
-                <span v-if="!row.enabled || latencyOf(inst.id, row) === null" class="text-muted">--</span>
-                <span v-else-if="latencyOf(inst.id, row) === -1" class="lat-na">不通</span>
-                <span v-else-if="latencyOf(inst.id, row) === 0" class="lat-ok">可通</span>
-                <span v-else :class="latencyOf(inst.id, row)! > 200 ? 'lat-slow' : 'lat-ok'">
-                  {{ latencyOf(inst.id, row) }} ms
-                </span>
+                <ProxyLatencyCell :enabled="row.enabled" :latency="latencyOf(inst.id, row)" />
               </template>
             </el-table-column>
             <el-table-column label="操作" width="130" fixed="right">
@@ -274,6 +218,10 @@ import {
   apiSetProxyEnabled
 } from '../api'
 import type { Proxy } from '../api/types'
+import ProxyStatusCell from '../components/mobile/ProxyStatusCell.vue'
+import ProxyLocalCell from '../components/mobile/ProxyLocalCell.vue'
+import ProxyRemoteCell from '../components/mobile/ProxyRemoteCell.vue'
+import ProxyLatencyCell from '../components/mobile/ProxyLatencyCell.vue'
 import { useInstancesStore } from '../stores/instances'
 import { proxyTypeColor, proxyTypeLabel, statusDotColor } from '../utils/status'
 import { frpcVersionLabel } from '../utils/frpcVersion'
@@ -733,19 +681,6 @@ function onDelete(instanceId: number, row: Proxy) {
   display: inline-block;
 }
 
-.lat-ok {
-  color: #67c23a;
-  font-weight: 600;
-}
-
-.lat-slow {
-  color: #e6a23c;
-  font-weight: 600;
-}
-
-.lat-na {
-  color: #c0c4cc;
-}
 
 :deep(.row-disabled) {
   opacity: 0.55;

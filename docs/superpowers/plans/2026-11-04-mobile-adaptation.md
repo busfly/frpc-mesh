@@ -1351,15 +1351,19 @@ defineProps<{ enabled: boolean; latency: number | null }>()
 > `.lat-na` / `.lat-ok` / `.lat-slow` 三个类现在定义在 `ProxiesView.vue` 的 scoped style 里。子组件根元素会带上父作用域 id，但这里类挂在子组件内部元素上，父级 scoped 规则不再生效——把这三条规则从 `ProxiesView.vue` 移到 `web/src/styles/global.css` 末尾：
 
 ```css
-/* 延迟列语义（表格与卡片共用，见 ProxyLatencyCell） */
+/* 延迟列语义（桌面表格与移动卡片共用，见 components/mobile/ProxyLatencyCell.vue） */
 .lat-ok {
   color: #67c23a;
+  font-weight: 600;
 }
+
 .lat-slow {
   color: #e6a23c;
+  font-weight: 600;
 }
+
 .lat-na {
-  color: #f56c6c;
+  color: #c0c4cc;
 }
 ```
 
