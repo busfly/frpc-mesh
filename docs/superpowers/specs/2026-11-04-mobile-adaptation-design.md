@@ -82,21 +82,21 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 ### 4.3 FRPS 服务器 `InstancesView`
 
-- 卡片四行：① 名称 + 状态点 + 状态文字 ② `addr:port`（有域名则域名优先，IP 兜底）③「代理 M/N 在线」+ frpc 版本（口径沿用桌面：`默认 v0.61.1` / `v0.71.1` / `v9.9.9 · 暂用 v0.61.1`）④ 启用开关（带「已启用/已停用」文字）。
-- 一行直达：重启（`store.restart`）。
-- 「⋯」面板：编辑、启动/停止、配置文件、运行日志、删除。
-- 「+ 添加服务器」按钮在移动端保持吸顶工具条内，不悬浮。
+- 卡片四行：① 名称（点击 = 跳 `/proxies?instance=<id>`，与桌面名称链接同一 `goDetail`）+ 状态点 + 状态文字 ② `addr:port`（`mono`）③「代理 M/N 在线」+ frpc 版本（口径沿用桌面：`默认 v0.61.1` / `v0.71.1` / `v9.9.9 · 暂用 v0.61.1`，走 `frpcVersionLabel` / `frpcVersionFallback`）④ 启用开关（带「已启用/已停用」文字，沿用 `onToggleEnabled`）。
+- 「⋯」面板项 = 桌面已有的四个操作，不新增：**重启、管理面板（`manage_port` 未配置时禁用并说明原因）、编辑、删除**。
+- 「新建 FRPS 服务器」按钮保留在页头，移动端页头改为上下排（标题一行、按钮整宽一行）。
 
 ### 4.4 穿透代理 `ProxiesView`（核心页）
 
-- **服务器切换**：`el-tabs` → 吸顶横向滚动 chip 条，每个 chip = 状态点 + 服务器名 + `在线/总数`；选中态用主色渐变底 + 白字 + 加粗（不只靠颜色）。chip 条 `overflow-x: auto` 且隐藏滚动条，**绑定现有的 `activeTab`**（`ProxiesView.vue:295`，已负责与 `?instance=` 查询参数同步，`ProxiesView.vue:396-400/413-423`），不新增第二份激活态。
-- **工具条**：只留「+ 创建」（主按钮）与「Ping 全部」，右侧显示「在线 M / 共 N」。跨服务器拷贝从卡片「⋯」进入，工具条不放。
+- **服务器切换**：`el-tabs` → 吸顶横向滚动 chip 条，每个 chip = 状态点 + 服务器名 + `frpc 版本口径`；选中态用主色渐变底 + 白字 + 加粗（不只靠颜色）。chip 条 `overflow-x: auto` 且隐藏滚动条，**绑定现有的 `activeTab`**（`ProxiesView.vue:295`，已负责与 `?instance=` 查询参数同步，`ProxiesView.vue:396-400/413-423`），不新增第二份激活态。
+- **快速添加**：桌面的 5 张 `TYPE_CARDS`（按类型快速添加，`ProxiesView.vue:29-50`）在移动端改成第二排横向滚动 chip（类型色点 + 类型名 + 副标题），保持「点一下就按该类型新建」的原语义，**不替换成单个通用「+ 创建」按钮**。
+- **工具条**：沿用桌面三个入口——配置文件、运行日志、全部 Ping（前两个是次要文字按钮，后者是主按钮）。跨服务器拷贝从卡片「⋯」进入。
 - **代理卡片三行**：
-  1. 类型徽标（`proxyTypeLabel`）+ 名称 + 状态点与状态文字 + 启用开关（带文字）+「⋯」
-  2. 远程访问地址（主行，`mono`，域名优先、IP 兜底）+ 行尾复制按钮（复用 `utils/clipboard.ts` 三级兜底，http 下可用）
-  3. 本地地址 · 延迟（任一为空则该字段不渲染，两个都空则整行不渲染）
-- **「⋯」操作面板**：编辑、重启、配置文件、运行日志、拷贝到其他服务器…、删除（红色，需二次确认）。
-- **配置文件 / 运行日志**：桌面是弹窗，移动端复用同一组件 `ConfigTab` / `LogsTab`，只把外层容器换成底部弹层。日志区 `terminal` 已有 `word-break`，移动端字号 12px、内层独立滚动。
+  1. 类型徽标（`proxyTypeLabel` + `proxyTypeColor`）+ 名称 + 状态（已禁用 / 在线 / 离线，文字必带）+ 启用开关 +「⋯」
+  2. 远程端口 / 域名（主行）——**与桌面表格同一渲染逻辑**：tcp/udp 有 `remote_port` 给可点链接、无则「随机」；http/https 优先 `custom_domains`、再 `subdomain`；抽成共享组件 `ProxyRemoteCell.vue`，表格与卡片都用它
+  3. 本地地址 / 访问摘要 + 延迟（同样抽成 `ProxyLocalCell.vue` 与共享延迟渲染；任一为空则该字段不渲染，两个都空则整行不渲染）
+- **「⋯」操作面板**：编辑、拷贝到其他服务器…、删除（红色，需二次确认）——就是桌面 `ProxiesView.vue:178-198` 的三个操作，**不新增**「重启代理 / 查看该代理日志」这类桌面没有的入口（代理级重启与单代理日志后端没有对应操作）。
+- **配置文件 / 运行日志**：桌面是 `infoVisible` 弹窗（`ProxiesView.vue:215-225`），移动端复用同一组件 `ConfigTab` / `LogsTab`，只把外层容器换成底部弹层。日志区 `terminal` 已有 `word-break`，移动端字号 12px、内层独立滚动。
 
 ### 4.5 frpc 版本管理 `VersionsView`
 
@@ -114,20 +114,28 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 | 名称 | 位置 | 职责 | 依赖 |
 |---|---|---|---|
-| `useIsMobile()` | `web/src/composables/useIsMobile.ts` | 单一形态判定源（matchMedia 767px，模块级单例） | 无 |
-| `BottomSheet.vue` | `web/src/components/mobile/BottomSheet.vue` | 底部弹层容器：`el-drawer direction="btt"` + 顶部把手 + 下滑关闭 + 吸底 footer + 安全区 padding + 内层唯一滚动区 | `useIsMobile` |
-| `useSwipeToClose()` | `web/src/composables/useSwipeToClose.ts` | 把手区 touch 事件：位移 >80px 或速度 >0.5px/ms 关闭，否则回弹；忽略内层滚动容器冒泡 | 无 |
-| `ActionSheet.vue` | `web/src/components/mobile/ActionSheet.vue` | 「⋯」操作面板：标题 + 操作项（44px 行高、可标红、可带副文案）+ 取消项 | `BottomSheet` |
+| `useIsMobile()` / `useIsNarrowDesktop()` | `web/src/composables/useMediaQuery.ts` | 全站唯一形态判定源：`matchMedia` 模块级缓存，多个组件共用一个监听 | 无 |
+| `useSwipeToClose(target, onClose)` | `web/src/composables/useSwipeToClose.ts` | 把手区 touch 事件：位移 >80px 或速度 >0.5px/ms 关闭，否则回弹；忽略内层滚动容器冒泡 | 无 |
+| `ActionSheet.vue` | `web/src/components/mobile/ActionSheet.vue` | 「⋯」操作面板：`el-drawer direction="btt"` + 标题 + 操作项（44px 行高、可标红、可禁用带原因）+ 取消 | `useSwipeToClose` |
 | `FieldHint.vue` | `web/src/components/mobile/FieldHint.vue` | 说明文字双形态：`(hover: hover)` 渲染现有 tooltip，触屏渲染可点「?」展开同一段文案 | 无 |
-| `ProxyCardList.vue` | `web/src/components/mobile/ProxyCardList.vue` | 代理卡片列表：props `items`，事件 `toggle/restart/edit/ping/copy/remove/view-config/view-log` | `utils/status.ts` |
-| `InstanceCardList.vue` | `web/src/components/mobile/InstanceCardList.vue` | 服务器卡片列表（服务器页与仪表盘共用）：props `items` + 事件 | `utils/status.ts` |
+| `ProxyCardList.vue` | `web/src/components/mobile/ProxyCardList.vue` | 代理卡片列表：props `items`，事件 `toggle/edit/copy/remove` | `utils/status.ts`、`ProxyRemoteCell`、`ProxyLocalCell` |
+| `ProxyRemoteCell.vue` | `web/src/components/mobile/ProxyRemoteCell.vue` | 「远程端口 / 域名」渲染（tcp/udp 端口、随机、custom_domains、subdomain 四分支），**桌面表格与移动卡片共用** | 无 |
+| `ProxyLocalCell.vue` | `web/src/components/mobile/ProxyLocalCell.vue` | 「本地地址 / 访问摘要」渲染（visitor 与本地端口分支），**桌面表格与移动卡片共用** | 无 |
+| `InstanceCardList.vue` | `web/src/components/mobile/InstanceCardList.vue` | 服务器卡片列表（服务器页与仪表盘共用）：props `items` + 事件 | `utils/status.ts`、`utils/frpcVersion.ts` |
 | `SideMenu.vue` | `web/src/components/layout/SideMenu.vue` | 5 项菜单定义唯一来源，侧栏与抽屉共用 | 无 |
+| `mobile.css` | `web/src/styles/mobile.css` | 只放媒体查询与移动形态工具类：`.fm-sheet`（把 `el-dialog` 变成底部弹层）、chip 条、卡片列表、安全区、触摸热区 | 无 |
+
+**容器不新建包装组件**（降低桌面回归面）：
+
+- `ProxyFormDialog`（`el-dialog`）保持**同一份模板**，只在 `isMobile` 时把 `width` 换成 `100%` 并挂 `.fm-sheet` 类，用 CSS 把对话框改成贴底、圆角、内层滚动的底部弹层；头部加把手并接 `useSwipeToClose`。
+- `InstanceFormDrawer`（`el-drawer`）EP 原生支持 `direction`，`isMobile` 时改 `direction="btt"` + `size="92%"`，其余不动。
+- 配置文件 / 运行日志弹窗（`ProxiesView` 的 `infoVisible`）与拷贝弹窗同理走 `.fm-sheet`。
 
 约束：卡片组件**不含任何 API 调用**，只 props/events；视图里的 handler 只写一份，表格与卡片调同一批 store action。
 
 ## 6. 表单与底部弹层规则
 
-1. `ProxyFormDialog`（720px）与 `InstanceFormDrawer`（560px）在移动端统一由 `BottomSheet` 承载（`size="92%"`），组件内部模板不变。
+1. `ProxyFormDialog`（720px `el-dialog`）与 `InstanceFormDrawer`（560px `el-drawer`）在移动端分别变成贴底弹层与 `direction="btt"` 抽屉（做法见 §5，**模板只有一份**，只改容器参数与类名）。
 2. 所有 `el-col :span="12"` 补 `:xs="24"`（用 EP 栅格自带响应式，不用 `v-if` 写两套）。
 3. `label-position` 移动端改 `top`（放弃 110px 左标），标签字号 12px、与输入框间距 5px。
 4. 端口/数值字段加 `inputmode="numeric"`；密码字段 `autocomplete="new-password"`；数字键盘不弹全键盘。
