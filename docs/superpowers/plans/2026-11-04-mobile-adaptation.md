@@ -2710,6 +2710,28 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
     }
     check('[移动] 触摸热区达标（主44/次32）', tapBad.length === 0, tapBad.slice(0, 4).join(' | '))
 
+    // 规格 §4.2：仪表盘只看状态，启停回服务器页做，卡片上不重复放开关
+    await S.cmd('Page.navigate', { url: `${BASE}/` })
+    await S.wait('document.querySelector(".fm-cards")', 'dashboard cards')
+    check('[移动] 仪表盘卡片不重复放启停开关', await S.js(
+      `!document.querySelector('.fm-card .el-switch')`
+    ), '仪表盘卡片里出现了开关')
+
+    // 规格 §4.3：窄屏页头改上下排、新建按钮整宽
+    await S.cmd('Page.navigate', { url: `${BASE}/instances` })
+    await S.wait('document.querySelector(".page-head .el-button")', 'instances head')
+    const head = await S.js(
+      `(() => { const t = document.querySelector('.page-title').getBoundingClientRect();` +
+      ` const b = document.querySelector('.page-head .el-button').getBoundingClientRect();` +
+      ` return { below: b.top >= t.bottom, ratio: Math.round((b.width / window.innerWidth) * 100) / 100 } })()`
+    )
+    check('[移动] 服务器页页头上下排且按钮整宽', head.below && head.ratio > 0.8, JSON.stringify(head))
+
+    // 规格 §4.4：两排同款 chip 语义不同，快速添加那排要有说明文字，别把「加代理」当成「切服务器」
+    await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
+    await S.wait('document.querySelector(".fm-type-chips")', 'type chips for caption')
+    check('[移动] 快速添加排有说明标题', await S.js(`!!document.querySelector('.fm-chips-caption')`), '缺少说明标题')
+
     // 汉堡与侧栏互换
     await S.cmd('Page.navigate', { url: `${BASE}/` })
     await S.wait('document.querySelector(".hamburger")', 'hamburger')

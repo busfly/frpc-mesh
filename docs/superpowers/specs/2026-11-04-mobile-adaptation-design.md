@@ -92,6 +92,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 - **服务器切换**：`el-tabs` → 吸顶横向滚动 chip 条，每个 chip = 状态点 + 服务器名 + `frpc 版本口径`；选中态用主色渐变底 + 白字 + 加粗（不只靠颜色）。chip 条 `overflow-x: auto` 且隐藏滚动条，**绑定现有的 `activeTab`**（`ProxiesView.vue:295`，已负责与 `?instance=` 查询参数同步，`ProxiesView.vue:396-400/413-423`），不新增第二份激活态。
 - **快速添加**：桌面的 5 张 `TYPE_CARDS`（按类型快速添加，`ProxiesView.vue:29-50`）在移动端改成第二排横向滚动 chip（类型色点 + 类型名 + 副标题），保持「点一下就按该类型新建」的原语义，**不替换成单个通用「+ 创建」按钮**。
+- **实测补充**：两排 chip 同款同形（服务器切换 / 快速添加）在 390px 下极易混为一谈，误点类型排会直接开一张新代理表单。故快速添加那排上方加一行 11px 灰字「快速添加（点类型直接新建代理）」，验收脚本断言 `.fm-chips-caption` 存在。
 - **工具条**：沿用桌面三个入口——配置文件、运行日志、全部 Ping（前两个是次要文字按钮，后者是主按钮）。跨服务器拷贝从卡片「⋯」进入。
 - **代理卡片四行**（实测后把开关与「⋯」从第 1 行下移，否则名称被截成 5 个字符）：
   1. 类型徽标（`proxyTypeLabel` + `proxyTypeColor`）+ 名称 + 状态（已禁用 / 在线 / 离线，文字必带）
@@ -132,7 +133,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 **容器不新建包装组件**（降低桌面回归面）：
 
-- `ProxyFormDialog`（`el-dialog`）保持**同一份模板**，只在 `isMobile` 时把 `width` 换成 `100%` 并挂 `.fm-sheet` 类，用 CSS 把对话框改成贴底、圆角、内层滚动的底部弹层；头部加把手并接 `useSwipeToClose`。
+- `ProxyFormDialog`（`el-dialog`）保持**同一份模板**，只在 `isMobile` 时把 `width` 换成 `100%` 并挂 `.fm-sheet` 类，用 CSS 把对话框改成贴底、圆角、内层滚动的底部弹层；头部加把手并接 `useSwipeToClose`。（实测坑：EP 有 `.el-drawer__header > :first-child { flex: 1 }`，把手作为 header 第一个子元素会被拉成一整条灰带、把标题挤到右边；用 `.fm-sheet .el-drawer__header .fm-handle` 以更高特异度压成 `flex: 0 0 100%` 独占一行，小灰条改由 `::after` 居中画，整行 18px 都是下滑抓取区。）
 - `InstanceFormDrawer`（`el-drawer`）EP 原生支持 `direction`，`isMobile` 时改 `direction="btt"` + `size="92%"`，其余不动。
 - 配置文件 / 运行日志弹窗（`ProxiesView` 的 `infoVisible`）与拷贝弹窗同理走 `.fm-sheet`。
 
