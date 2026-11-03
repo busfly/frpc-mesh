@@ -5,19 +5,6 @@
         <span class="status-dot" :style="{ background: statusDotColor(row.status) }"></span>
         <span class="fm-card-name" @click="emit('detail', row.id)">{{ row.name }}</span>
         <span class="fm-card-state">{{ statusText(row.status) }}</span>
-        <el-switch
-          :model-value="row.enabled"
-          :loading="row.toggling"
-          @change="emit('toggle', row.id, $event as boolean)"
-        />
-        <button
-          class="fm-more"
-          :class="{ 'fm-more-text': moreLabel }"
-          :aria-label="moreLabel ? undefined : '更多操作'"
-          @click="emit('more', row.id)"
-        >
-          {{ moreLabel || '⋯' }}
-        </button>
       </div>
       <div class="fm-card-row">
         <span class="fm-card-k">服务器</span>
@@ -35,6 +22,22 @@
       </div>
       <!-- 桌面靠 hover tooltip 才看得见的失败原因，触屏必须有地方读；没有错误就不占一行 -->
       <div v-if="row.error" class="fm-card-err">{{ row.error }}</div>
+      <div class="fm-card-foot">
+        <span class="fm-card-k">{{ row.enabled ? '已启用' : '已停用' }}</span>
+        <el-switch
+          :model-value="row.enabled"
+          :loading="row.toggling"
+          @change="emit('toggle', row.id, $event as boolean)"
+        />
+        <button
+          class="fm-more"
+          :class="{ 'fm-more-text': moreLabel }"
+          :aria-label="moreLabel ? undefined : '更多操作'"
+          @click="emit('more', row.id)"
+        >
+          {{ moreLabel || '⋯' }}
+        </button>
+      </div>
     </div>
     <el-empty v-if="!rows.length" :description="emptyText" />
   </div>

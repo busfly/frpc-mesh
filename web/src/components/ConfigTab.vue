@@ -88,4 +88,16 @@ defineExpose({ reload: load })
 .log-empty {
   padding: 20px 0;
 }
+
+@media (max-width: 767px) {
+  .tab-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .toolbar-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 </style>

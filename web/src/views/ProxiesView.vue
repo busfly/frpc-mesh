@@ -13,25 +13,49 @@
         <el-button type="primary" @click="router.push('/instances')">前往 FRPS 服务器管理</el-button>
       </el-empty>
 
-      <el-tabs v-else v-model="activeTab">
-        <el-tab-pane v-for="inst in store.instances" :key="inst.id" :name="String(inst.id)">
-          <template #label>
-            <span class="tab-label">
-              <span
-                class="status-dot"
-                :style="{ background: statusDotColor(inst.runtime?.status) }"
-              ></span>
-              {{ inst.name }}
-              <span class="tab-ver">{{ frpcVersionLabel(inst, versionState) }}</span>
-            </span>
-          </template>
+      <template v-else>
+        <!-- 导航：桌面 = 空壳 el-tabs（内容不放进 pane，避免两套模板）；移动 = 吸顶横向 chip 条 -->
+        <el-tabs v-if="!isMobile" v-model="activeTab" class="nav-tabs">
+          <el-tab-pane v-for="inst in store.instances" :key="inst.id" :name="String(inst.id)">
+            <template #label>
+              <span class="tab-label">
+                <span
+                  class="status-dot"
+                  :style="{ background: statusDotColor(inst.runtime?.status) }"
+                ></span>
+                {{ inst.name }}
+                <span class="tab-ver">{{ frpcVersionLabel(inst, versionState) }}</span>
+              </span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
 
-          <div class="type-cards">
+        <div v-else class="fm-chips" role="tablist">
+          <button
+            v-for="inst in store.instances"
+            :key="inst.id"
+            class="fm-chip"
+            :class="{ on: String(inst.id) === activeTab }"
+            role="tab"
+            @click="activeTab = String(inst.id)"
+          >
+            <span
+              class="status-dot"
+              :style="{ background: statusDotColor(inst.runtime?.status) }"
+            ></span>
+            {{ inst.name }}
+            <span class="chip-sub">{{ frpcVersionLabel(inst, versionState) }}</span>
+          </button>
+        </div>
+
+        <!-- 内容区：桌面表格与移动卡片共用一份工具条与快速添加 -->
+        <template v-if="activeInstance">
+          <div v-if="!isMobile" class="type-cards">
             <button
               v-for="t in TYPE_CARDS"
               :key="t.type"
               class="type-card"
-              @click="openCreate(inst.id, t.type + ':proxy')"
+              @click="openCreate(cur.id, t.type + ':proxy')"
             >
               <el-icon class="type-card-icon" :style="{ color: t.color }">
                 <component :is="t.icon" />
@@ -49,25 +73,38 @@
             </button>
           </div>
 
+          <div v-else class="fm-chips fm-type-chips">
+            <button
+              v-for="t in TYPE_CARDS"
+              :key="t.type"
+              class="fm-chip"
+              @click="openCreate(cur.id, t.type + ':proxy')"
+            >
+              <span class="type-dot" :style="{ background: t.color }"></span>
+              {{ t.name }}
+              <span class="chip-sub">{{ t.sub }}</span>
+            </button>
+          </div>
+
           <div class="tab-toolbar">
             <div class="section-title">
               已配置代理
               <span class="text-muted section-count">
-                （在线 {{ onlineCount(inst.id) }} / 共 {{ (proxiesMap[inst.id] || []).length }} 条）
+                （在线 {{ onlineCount(cur.id) }} / 共 {{ (proxiesMap[cur.id] || []).length }} 条）
               </span>
             </div>
             <div class="tab-toolbar-actions">
-              <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(inst, 'config')">
+              <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(cur, 'config')">
                 配置文件
               </el-button>
-              <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(inst, 'logs')">
+              <el-button size="small" text type="primary" class="toolbar-link" @click="openInfo(cur, 'logs')">
                 运行日志
               </el-button>
               <el-button
                 type="success"
                 round
-                :loading="!!pingingMap[inst.id]"
-                @click="onPing(inst.id)"
+                :loading="!!pingingMap[cur.id]"
+                @click="onPing(cur.id)"
               >
                 全部 Ping
               </el-button>
@@ -75,9 +112,10 @@
           </div>
 
           <el-table
-            :data="proxiesMap[inst.id] || []"
+            v-if="!isMobile"
+            :data="proxiesMap[cur.id] || []"
             :row-class-name="rowClassName"
-            v-loading="!!loadingMap[inst.id]"
+            v-loading="!!loadingMap[cur.id]"
             size="small"
             stripe
             empty-text="暂无代理，点击上方类型卡片快速添加"
@@ -92,7 +130,7 @@
             <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
             <el-table-column label="状态" width="80">
               <template #default="{ row }">
-                <ProxyStatusCell :proxy="row" :online="isOnline(inst.id, row)" />
+                <ProxyStatusCell :proxy="row" :online="isOnline(cur.id, row)" />
               </template>
             </el-table-column>
             <el-table-column label="启用" width="70">
@@ -100,7 +138,7 @@
                 <el-switch
                   :model-value="row.enabled"
                   :loading="!!togglingProxy[row.id]"
-                  @change="onToggleProxy(inst.id, row, $event as boolean)"
+                  @change="onToggleProxy(cur.id, row, $event as boolean)"
                 />
               </template>
             </el-table-column>
@@ -111,21 +149,21 @@
             </el-table-column>
             <el-table-column label="远程端口 / 域名" min-width="130" show-overflow-tooltip>
               <template #default="{ row }">
-                <ProxyRemoteCell :proxy="row" :remote-host="remoteHost(inst)" />
+                <ProxyRemoteCell :proxy="row" :remote-host="remoteHost(cur)" />
               </template>
             </el-table-column>
             <el-table-column label="延迟" width="80">
               <template #default="{ row }">
-                <ProxyLatencyCell :enabled="row.enabled" :latency="latencyOf(inst.id, row)" />
+                <ProxyLatencyCell :enabled="row.enabled" :latency="latencyOf(cur.id, row)" />
               </template>
             </el-table-column>
             <el-table-column label="操作" width="130" fixed="right">
               <template #default="{ row }">
                 <div class="op-cell">
-                  <el-button size="small" text type="primary" @click="openEdit(inst.id, row)">
+                  <el-button size="small" text type="primary" @click="openEdit(cur.id, row)">
                     编辑
                   </el-button>
-                  <el-button size="small" text type="primary" @click="openCopy(inst.id, row)">
+                  <el-button size="small" text type="primary" @click="openCopy(cur.id, row)">
                     拷贝
                   </el-button>
                   <el-button
@@ -133,7 +171,7 @@
                     text
                     type="danger"
                     :loading="!!deletingMap[row.id]"
-                    @click="onDelete(inst.id, row)"
+                    @click="onDelete(cur.id, row)"
                   >
                     删除
                   </el-button>
@@ -141,9 +179,26 @@
               </template>
             </el-table-column>
           </el-table>
-        </el-tab-pane>
-      </el-tabs>
+
+          <ProxyCardList
+            v-else
+            :rows="proxyCardRows"
+            :remote-host="remoteHost(cur)"
+            empty-text="暂无代理，点击上方类型芯片快速添加"
+            @toggle="(p, v) => onToggleProxy(cur.id, p, v)"
+            @more="openProxyActions"
+          />
+        </template>
+      </template>
     </el-card>
+
+    <!-- 代理行操作面板（移动形态，等价于桌面操作列的三个按钮） -->
+    <ActionSheet
+      v-model="proxySheetVisible"
+      :title="proxySheetTitle"
+      :actions="proxySheetActions"
+      @action="onProxyAction"
+    />
 
     <!-- 添加 / 编辑代理 -->
     <ProxyFormDialog
@@ -217,11 +272,14 @@ import {
   apiProxiesOnline,
   apiSetProxyEnabled
 } from '../api'
-import type { Proxy } from '../api/types'
+import type { Instance, Proxy } from '../api/types'
 import ProxyStatusCell from '../components/mobile/ProxyStatusCell.vue'
 import ProxyLocalCell from '../components/mobile/ProxyLocalCell.vue'
 import ProxyRemoteCell from '../components/mobile/ProxyRemoteCell.vue'
 import ProxyLatencyCell from '../components/mobile/ProxyLatencyCell.vue'
+import ProxyCardList, { type ProxyCardRow } from '../components/mobile/ProxyCardList.vue'
+import ActionSheet, { type ActionItem } from '../components/mobile/ActionSheet.vue'
+import { useIsMobile } from '../composables/useMediaQuery'
 import { useInstancesStore } from '../stores/instances'
 import { proxyTypeColor, proxyTypeLabel, statusDotColor } from '../utils/status'
 import { frpcVersionLabel } from '../utils/frpcVersion'
@@ -241,6 +299,59 @@ const TYPE_CARDS = [
 ]
 
 const activeTab = ref('')
+
+const isMobile = useIsMobile()
+const proxySheetVisible = ref(false)
+const proxySheetRow = ref<Proxy | null>(null)
+
+/** 当前激活实例：chip 条与内容区共用（原来每个 pane 各有一个 inst） */
+const activeInstance = computed(() => {
+  const id = Number(activeTab.value) || 0
+  return store.instances.find((i) => i.id === id) || null
+})
+
+/**
+ * 内容区模板取实例用这个：类型上非空。
+ * 列定义在 `#default="{ row }"` 闭包里，外层 v-if 的空值收窄传不进去。
+ */
+const cur = computed(() => activeInstance.value as Instance)
+
+const proxyCardRows = computed<ProxyCardRow[]>(() => {
+  const inst = activeInstance.value
+  if (!inst) return []
+  return (proxiesMap[inst.id] || []).map((p) => ({
+    proxy: p,
+    online: isOnline(inst.id, p),
+    latency: latencyOf(inst.id, p),
+    toggling: !!togglingProxy[p.id]
+  }))
+})
+
+const proxySheetTitle = computed(() => {
+  const p = proxySheetRow.value
+  return p ? `${p.name} · ${proxyTypeLabel(p.type)}` : ''
+})
+
+/** 面板项 = 桌面操作列那三个，不新增桌面没有的入口 */
+const proxySheetActions = computed<ActionItem[]>(() => [
+  { key: 'edit', label: '编辑' },
+  { key: 'copy', label: '拷贝到其他服务器…' },
+  { key: 'delete', label: '删除', danger: true, hint: '需再确认一次' }
+])
+
+function openProxyActions(p: Proxy) {
+  proxySheetRow.value = p
+  proxySheetVisible.value = true
+}
+
+function onProxyAction(key: string) {
+  const inst = activeInstance.value
+  const p = proxySheetRow.value
+  if (!inst || !p) return
+  if (key === 'edit') openEdit(inst.id, p)
+  else if (key === 'copy') openCopy(inst.id, p)
+  else if (key === 'delete') onDelete(inst.id, p)
+}
 const proxiesMap = reactive<Record<number, Proxy[]>>({})
 const loadingMap = reactive<Record<number, boolean>>({})
 const pingedMap = reactive<Record<number, boolean>>({})
@@ -566,6 +677,23 @@ function onDelete(instanceId: number, row: Proxy) {
   color: var(--el-text-color-secondary);
 }
 
+/* 桌面导航用的空壳 tabs：内容已挪到共用区，pane 是空的，留着会多一块空白 */
+.nav-tabs :deep(.el-tabs__content) {
+  display: none;
+}
+
+.type-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* 类型快速添加那排芯片：上面已有服务器芯片条，这里不再重复留顶部间距 */
+.fm-type-chips {
+  padding-top: 0;
+}
+
 .tab-toolbar {
   display: flex;
   align-items: center;
@@ -702,5 +830,19 @@ function onDelete(instanceId: number, row: Proxy) {
 .copy-tip {
   font-size: 12px;
   line-height: 1.6;
+}
+
+@media (max-width: 767px) {
+  /* 窄屏：标题与操作各占一行，避免「已配置代理」被挤成三行 */
+  .tab-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .tab-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
 }
 </style>

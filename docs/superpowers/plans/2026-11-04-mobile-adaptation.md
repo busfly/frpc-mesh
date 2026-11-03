@@ -1475,19 +1475,6 @@ git commit -m "refactor(web): 代理状态/本地/远程/延迟四段渲染抽�
         <span class="status-dot" :style="{ background: statusDotColor(row.status) }"></span>
         <span class="fm-card-name" @click="emit('detail', row.id)">{{ row.name }}</span>
         <span class="fm-card-state">{{ statusText(row.status) }}</span>
-        <el-switch
-          :model-value="row.enabled"
-          :loading="row.toggling"
-          @change="emit('toggle', row.id, $event as boolean)"
-        />
-        <button
-          class="fm-more"
-          :class="{ 'fm-more-text': moreLabel }"
-          :aria-label="moreLabel ? undefined : '更多操作'"
-          @click="emit('more', row.id)"
-        >
-          {{ moreLabel || '⋯' }}
-        </button>
       </div>
       <div class="fm-card-row">
         <span class="fm-card-k">服务器</span>
@@ -1505,6 +1492,22 @@ git commit -m "refactor(web): 代理状态/本地/远程/延迟四段渲染抽�
       </div>
       <!-- 桌面靠 hover tooltip 才看得见的失败原因，触屏必须有地方读；没有错误就不占一行 -->
       <div v-if="row.error" class="fm-card-err">{{ row.error }}</div>
+      <div class="fm-card-foot">
+        <span class="fm-card-k">{{ row.enabled ? '已启用' : '已停用' }}</span>
+        <el-switch
+          :model-value="row.enabled"
+          :loading="row.toggling"
+          @change="emit('toggle', row.id, $event as boolean)"
+        />
+        <button
+          class="fm-more"
+          :class="{ 'fm-more-text': moreLabel }"
+          :aria-label="moreLabel ? undefined : '更多操作'"
+          @click="emit('more', row.id)"
+        >
+          {{ moreLabel || '⋯' }}
+        </button>
+      </div>
     </div>
     <el-empty v-if="!rows.length" :description="emptyText" />
   </div>
@@ -1793,26 +1796,26 @@ git commit -m "feat(web): 服务器卡片列表接入服务器页与仪表盘"
         </span>
         <span class="fm-card-name">{{ row.proxy.name }}</span>
         <ProxyStatusCell :proxy="row.proxy" :online="row.online" />
+      </div>
+      <div v-if="hasRemote(row.proxy)" class="fm-card-row">
+        <span class="fm-card-k">远程</span>
+        <ProxyRemoteCell :proxy="row.proxy" :remote-host="remoteHost" />
+      </div>
+      <div v-if="hasLocal(row.proxy) || row.latency !== null" class="fm-card-sub">
+        <span v-if="hasLocal(row.proxy)">
+          本地 <ProxyLocalCell :proxy="row.proxy" :linkable="false" />
+        </span>
+        <span v-if="row.latency !== null">
+          延迟 <ProxyLatencyCell :enabled="row.proxy.enabled" :latency="row.latency" />
+        </span>
+      </div>
+      <div class="fm-card-foot">
         <el-switch
           :model-value="row.proxy.enabled"
           :loading="row.toggling"
           @change="emit('toggle', row.proxy, $event as boolean)"
         />
         <button class="fm-more" aria-label="更多操作" @click="emit('more', row.proxy)">⋯</button>
-      </div>
-      <div v-if="hasRemote(row.proxy) || hasLocal(row.proxy)" class="fm-card-row">
-        <template v-if="hasRemote(row.proxy)">
-          <span class="fm-card-k">远程</span>
-          <ProxyRemoteCell :proxy="row.proxy" :remote-host="remoteHost" />
-        </template>
-      </div>
-      <div v-if="hasLocal(row.proxy) || row.latency !== null" class="fm-card-sub">
-        <span v-if="hasLocal(row.proxy)">
-          本地 <ProxyLocalCell :proxy="row.proxy" />
-        </span>
-        <span v-if="row.latency !== null">
-          延迟 <ProxyLatencyCell :enabled="row.proxy.enabled" :latency="row.latency" />
-        </span>
       </div>
     </div>
     <el-empty v-if="!rows.length" :description="emptyText" />

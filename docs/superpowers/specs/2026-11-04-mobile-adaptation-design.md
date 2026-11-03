@@ -82,7 +82,8 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 
 ### 4.3 FRPS 服务器 `InstancesView`
 
-- 卡片四行：① 名称（点击 = 跳 `/proxies?instance=<id>`，与桌面名称链接同一 `goDetail`）+ 状态点 + 状态文字 ② `addr:port`（`mono`）③「代理 M/N 在线」+ frpc 版本（口径沿用桌面：`默认 v0.61.1` / `v0.71.1` / `v9.9.9 · 暂用 v0.61.1`，走 `frpcVersionLabel` / `frpcVersionFallback`；版本回落时橙色 + `FieldHint` 说明原因）④ 启用开关（带「已启用/已停用」文字，沿用 `onToggleEnabled`）。
+- 卡片四行：① 名称（点击 = 跳 `/proxies?instance=<id>`，与桌面名称链接同一 `goDetail`）+ 状态点 + 状态文字 ② `addr:port`（`mono`）③「代理 M/N 在线」+ frpc 版本（口径沿用桌面：`默认 v0.61.1` / `v0.71.1` / `v9.9.9 · 暂用 v0.61.1`，走 `frpcVersionLabel` / `frpcVersionFallback`；版本回落时橙色 + `FieldHint` 说明原因）④ 操作行：启用开关（旁带「已启用/已停用」文字，沿用 `onToggleEnabled`）+「⋯」。
+- **实测修正**：开关与「⋯」原本排在第①行，390px 下名称只剩 5 个字符宽（`demo-ssh` 被省略号截断），故把它们下移到独立操作行，第①行只留标识与状态。
 - 桌面靠 hover tooltip 才看得见的两件事在触屏必须有地方读：失败原因（error 态在卡片补一行 `runtime.last_error`，无错误不占行；`/api/dashboard` 的 `DashboardInstance` 没有该字段，仪表盘卡片因此不显示）、版本回落原因（`FieldHint`）。
 - 「⋯」面板项 = 桌面已有的四个操作，不新增：**重启、管理面板（`manage_port` 未配置时禁用并说明原因）、编辑、删除**。
 - 「新建 FRPS 服务器」按钮保留在页头，移动端页头改为上下排（标题一行、按钮整宽一行）。
@@ -92,10 +93,11 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 - **服务器切换**：`el-tabs` → 吸顶横向滚动 chip 条，每个 chip = 状态点 + 服务器名 + `frpc 版本口径`；选中态用主色渐变底 + 白字 + 加粗（不只靠颜色）。chip 条 `overflow-x: auto` 且隐藏滚动条，**绑定现有的 `activeTab`**（`ProxiesView.vue:295`，已负责与 `?instance=` 查询参数同步，`ProxiesView.vue:396-400/413-423`），不新增第二份激活态。
 - **快速添加**：桌面的 5 张 `TYPE_CARDS`（按类型快速添加，`ProxiesView.vue:29-50`）在移动端改成第二排横向滚动 chip（类型色点 + 类型名 + 副标题），保持「点一下就按该类型新建」的原语义，**不替换成单个通用「+ 创建」按钮**。
 - **工具条**：沿用桌面三个入口——配置文件、运行日志、全部 Ping（前两个是次要文字按钮，后者是主按钮）。跨服务器拷贝从卡片「⋯」进入。
-- **代理卡片三行**：
-  1. 类型徽标（`proxyTypeLabel` + `proxyTypeColor`）+ 名称 + 状态（已禁用 / 在线 / 离线，文字必带）+ 启用开关 +「⋯」
+- **代理卡片四行**（实测后把开关与「⋯」从第 1 行下移，否则名称被截成 5 个字符）：
+  1. 类型徽标（`proxyTypeLabel` + `proxyTypeColor`）+ 名称 + 状态（已禁用 / 在线 / 离线，文字必带）
   2. 远程端口 / 域名（主行）——**与桌面表格同一渲染逻辑**：tcp/udp 有 `remote_port` 给可点链接、无则「随机」；http/https 优先 `custom_domains`、再 `subdomain`；抽成共享组件 `ProxyRemoteCell.vue`，表格与卡片都用它
   3. 本地地址 / 访问摘要 + 延迟（同样抽成 `ProxyLocalCell.vue` 与共享延迟渲染；任一为空则该字段不渲染，两个都空则整行不渲染）
+  4. 操作行：启用开关 +「⋯」（44px 热区）
 - **「⋯」操作面板**：编辑、拷贝到其他服务器…、删除（红色，需二次确认）——就是桌面 `ProxiesView.vue:178-198` 的三个操作，**不新增**「重启代理 / 查看该代理日志」这类桌面没有的入口（代理级重启与单代理日志后端没有对应操作）。
 - **配置文件 / 运行日志**：桌面是 `infoVisible` 弹窗（`ProxiesView.vue:215-225`），移动端复用同一组件 `ConfigTab` / `LogsTab`，只把外层容器换成底部弹层。日志区 `terminal` 已有 `word-break`，移动端字号 12px、内层独立滚动。
 

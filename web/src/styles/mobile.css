@@ -114,6 +114,14 @@
   gap: 8px;
   min-width: 0;
 }
+.fm-card-foot {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .fm-card-k {
   font-size: 11px;
   color: var(--el-text-color-secondary);
