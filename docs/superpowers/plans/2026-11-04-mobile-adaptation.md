@@ -2775,10 +2775,12 @@ git commit -m "perf(web): 刷新在途去重，切回前台立即补一次"
       JSON.stringify(menuNames)
     )
     await tapText(S, '穿透代理', `document.querySelector('.fm-nav-drawer')`)
-    await new Promise((r) => setTimeout(r, 700))
+    await new Promise((r) => setTimeout(r, 900))
+    // el-drawer 关闭后节点仍在 DOM（只是隐藏），所以按「量出来高度为 0」判关闭
     check('[移动] 点菜单跳转后抽屉自动关闭', await S.js(
-      `location.pathname === '/proxies' && !document.querySelector('.fm-nav-drawer')`
-    ), '未跳转或抽屉仍开着')
+      `(() => { const d = document.querySelector('.fm-nav-drawer');` +
+      ` return location.pathname === '/proxies' && (!d || d.getBoundingClientRect().height === 0) })()`
+    ), '未跳转或抽屉仍可见')
 ```
 
 > `menuNames` 的期望值按 `SideMenu.vue` 里 5 项的真实标题填（Task 3 定的就是「仪表盘 / FRPS 服务器 / 穿透代理 / frpc 版本管理 / 设置」），文字里含空格所以先 `replace(/\s+/g,'')` 再比。抽屉关闭靠 `el-drawer` 卸载，`destroy-on-close` 后节点消失，故用「查不到节点」判定。
