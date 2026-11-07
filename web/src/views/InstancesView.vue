@@ -10,6 +10,7 @@
 
     <el-card class="card" shadow="never">
       <el-table
+        v-if="!isMobile"
         :data="store.instances"
         v-loading="store.loading"
         stripe
@@ -66,12 +67,7 @@
           <template #header>
             <span class="th-enabled">
               启用
-              <el-tooltip
-                content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动"
-                placement="top"
-              >
-                <el-icon class="th-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
+<FieldHint content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动" />
             </span>
           </template>
           <template #default="{ row }">
@@ -120,9 +116,25 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <InstanceCardList
+        v-else
+        :rows="cardRows"
+        empty-text="暂无服务器，点上方「新建 FRPS 服务器」开始"
+        @detail="goDetail"
+        @toggle="onToggleEnabledById"
+        @more="openActions"
+      />
     </el-card>
 
     <InstanceFormDrawer v-model="drawerVisible" :instance="editing" />
+
+    <ActionSheet
+      v-model="sheetVisible"
+      :title="sheetTitle"
+      :actions="sheetActions"
+      @action="onAction"
+    />
   </div>
 </template>
 
@@ -130,12 +142,16 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, QuestionFilled } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import InstanceFormDrawer from '../components/InstanceFormDrawer.vue'
 import { apiListProxies, apiProxiesOnline, apiUpdateInstance } from '../api'
 import type { Instance } from '../api/types'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
+import InstanceCardList, { type InstanceCardRow } from '../components/mobile/InstanceCardList.vue'
+import ActionSheet, { type ActionItem } from '../components/mobile/ActionSheet.vue'
+import FieldHint from '../components/mobile/FieldHint.vue'
+import { useIsMobile } from '../composables/useMediaQuery'
 import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
 
 const router = useRouter()
@@ -145,6 +161,63 @@ const drawerVisible = ref(false)
 const editing = ref<Instance | null>(null)
 const toggling = reactive<Record<number, boolean>>({})
 const proxyStats = reactive<Record<number, { total: number; online: number }>>({})
+
+const isMobile = useIsMobile()
+const sheetVisible = ref(false)
+const sheetId = ref(0)
+
+const cardRows = computed<InstanceCardRow[]>(() =>
+  store.instances.map((i) => ({
+    id: i.id,
+    name: i.name,
+    status: i.runtime?.status || 'stopped',
+    addr: `${i.server_addr}:${i.server_port}`,
+    enabled: i.enabled,
+    toggling: !!toggling[i.id],
+    proxiesTotal: proxyStats[i.id]?.total ?? null,
+    proxiesOnline: proxyStats[i.id]?.online ?? null,
+    versionLabel: frpcVersionLabel(i, versionState.value),
+    versionFallback: frpcVersionFallback(i, versionState.value),
+    error: i.runtime?.status === 'error' ? i.runtime.last_error || '' : ''
+  }))
+)
+
+const sheetTitle = computed(() => {
+  const i = store.getInstance(sheetId.value)
+  return i ? `${i.name} · ${statusText(i.runtime?.status)}` : ''
+})
+
+/** 操作项与桌面表格操作列同权；「管理」在没配端口时禁用并写明原因 */
+const sheetActions = computed<ActionItem[]>(() => {
+  const i = store.getInstance(sheetId.value)
+  const manageable = !!i && i.manage_port > 0
+  return [
+    { key: 'edit', label: '编辑' },
+    { key: 'restart', label: '重启', hint: '隧道中断数秒后自动恢复' },
+    { key: 'manage', label: '管理面板', disabled: !manageable, hint: manageable ? '' : '未配置管理端口' },
+    { key: 'delete', label: '删除', danger: true }
+  ]
+})
+
+function openActions(id: number) {
+  sheetId.value = id
+  sheetVisible.value = true
+}
+
+function onAction(key: string) {
+  const row = store.getInstance(sheetId.value)
+  if (!row) return
+  if (key === 'edit') openEdit(row)
+  else if (key === 'restart') onRestart(row)
+  else if (key === 'manage') openManage(row)
+  else if (key === 'delete') onDelete(row)
+}
+
+/** 卡片开关只回传 id，复用既有的 onToggleEnabled */
+async function onToggleEnabledById(id: number, val: boolean) {
+  const row = store.getInstance(id)
+  if (row) await onToggleEnabled(row, val)
+}
 
 /** 尽力获取每台服务器的代理总数与在线数，失败静默（显示 '-'） */
 async function refreshProxyCounts() {
@@ -244,16 +317,25 @@ function onDelete(row: Instance) {
   margin-bottom: 4px;
 }
 
+@media (max-width: 767px) {
+  /* 窄屏标题与副标题被按钮挤得折行，改成上下排、按钮整宽 */
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .page-head .el-button {
+    width: 100%;
+  }
+}
+
 .th-enabled {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
-.th-help {
-  color: #909399;
-  cursor: help;
-}
 
 .op-cell {
   display: flex;

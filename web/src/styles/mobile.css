@@ -1,0 +1,393 @@
+/* 移动形态专用样式。类名统一 fm- 前缀，只在 isMobile 分支挂上。 */
+
+/* —— 底部弹层（el-drawer direction=btt）—— */
+.fm-sheet.el-drawer {
+  --el-drawer-padding-primary: 14px;
+}
+.fm-sheet .el-drawer__header {
+  margin-bottom: 8px;
+  padding: 4px 14px 10px;
+  /* 让把手独占一行（配合 .fm-handle 的 flex-basis: 100%），标题与关闭按钮留在第二行 */
+  flex-wrap: wrap;
+}
+.fm-sheet .el-drawer__body {
+  padding: 0 14px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.fm-sheet .el-drawer__footer {
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.fm-sheet.btt {
+  max-height: 92vh;
+  border-radius: 16px 16px 0 0;
+}
+.fm-handle {
+  width: 100%;
+  height: 18px;
+  margin: 0 auto 2px;
+  position: relative;
+  touch-action: none;
+}
+.fm-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: #d8dce8;
+}
+/* 抽屉头部里 EP 有 `.el-drawer__header > :first-child { flex: 1 }`，会把把手拉成一整条灰带、
+   把标题挤到右边；用更高特异度压成 flex-basis 100%，让它独占一行、标题回到第二行。 */
+.fm-sheet .el-drawer__header .fm-handle {
+  flex: 0 0 100%;
+  margin: 0;
+}
+/* 抽屉头部没有 el-dialog__title 样式，代理表单换容器时用这条 */
+.fm-sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+/* —— 吸顶 chip 条（服务器切换 / 类型快速添加）—— */
+.fm-chips {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 0 10px;
+  background: var(--fm-page-bg);
+  scrollbar-width: none;
+}
+.fm-chips::-webkit-scrollbar {
+  display: none;
+}
+.fm-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: #fff;
+  color: var(--el-text-color-regular);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fm-chip.on {
+  background: var(--fm-primary-grad);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+.fm-chip .chip-sub {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* —— 卡片列表 —— */
+.fm-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fm-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 11px 12px;
+  box-shadow: 0 1px 4px rgba(31, 36, 51, 0.06);
+}
+.fm-card-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.fm-card-name {
+  /* 名称改成 button 才能键盘触发：把 UA 的按钮外观清掉，观感与原 span 一致 */
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--fm-ink, #1f2433);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-card-row {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.fm-card-foot {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fm-card-k {
+  /* 键名是卡片里信息量最大的辅助文字：11px + secondary 在强光下对比不足，抬到 12px + regular */
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  flex: none;
+}
+.fm-card-sub {
+  margin-top: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.fm-more {
+  margin-left: auto;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: #fff;
+  color: var(--el-text-color-secondary);
+  font-size: 17px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* 文字版（仪表盘的「详情」）：同特异度靠书写顺序覆盖上面的定宽 */
+.fm-more-text {
+  width: auto;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-7);
+}
+
+/* —— 操作面板 —— */
+.fm-actionsheet .as-title {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.fm-actionsheet .as-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 2px;
+  border: none;
+  border-top: 1px solid var(--el-border-color-lighter);
+  background: transparent;
+  color: var(--fm-ink, #1f2433);
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fm-actionsheet .as-item[disabled] {
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+.fm-actionsheet .as-item.danger {
+  color: var(--el-color-danger);
+}
+.fm-actionsheet .as-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--el-text-color-secondary);
+}
+.fm-actionsheet .as-cancel {
+  margin-top: 8px;
+  justify-content: center;
+  color: var(--el-text-color-regular);
+}
+
+/* —— 说明文字（触屏）—— */
+.fm-hint-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid #c4cad8;
+  background: #fff;
+  color: #8a93ad;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* —— 全局移动形态微调 —— */
+@media (max-width: 767px) {
+  .page-container {
+    padding: 12px;
+  }
+  /* 主要按钮：实心按钮一律 ≥44 高（文字按钮另算，见下） */
+  .page-container .el-button--primary:not(.is-text):not(.is-link),
+  .page-container .el-button--success:not(.is-text):not(.is-link),
+  .page-container .el-button--danger:not(.is-text):not(.is-link) {
+    min-height: 44px;
+  }
+  /* 次要文字按钮：保持轻量观感，只用 padding 把热区抬到 32 */
+  .page-container .el-button.is-text,
+  .page-container .el-button.is-link {
+    min-height: 32px;
+  }
+  /* 卡片里的启用开关：EP 把 height 写死在 .el-switch 上（32px），padding 撑不开，只能显式加高 */
+  .fm-card .el-switch {
+    height: 44px;
+  }
+  /* 页内输入控件也走 44/16 这一档：设置页的「修改密码」「导入备份」直接铺在页面里，
+     不进弹层，早期只覆盖了弹层，导致这几处漏成 32 高 + 14 字号（iOS 聚焦必放大） */
+  .page-container .el-input,
+  .page-container .el-select,
+  .page-container .el-input-number {
+    --el-component-size: 44px;
+    --el-input-height: 44px;
+  }
+  .page-container .el-select__wrapper {
+    min-height: 44px;
+  }
+  .page-container .el-input__inner,
+  .page-container .el-textarea__inner,
+  .page-container .el-select__wrapper {
+    font-size: 16px;
+  }
+  /* 说明问号的可视大小保持不变，只在触屏时把点按热区抬到次要档（32）：
+     18×18 是桌面「别绑整卡」的锚点，手机上则要点得中 */
+  .fm-hint-btn {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  /* 弹层里的分段选择器（安全隧道的提供方/访问方）：EP 的外壳是 inline-flex，按内容撑宽，
+     320 屏上两项中文全称合计 324px 会把第二项顶出屏幕；改成占满宽 + 两项等分 + 允许换行 */
+  .fm-sheet .el-segmented,
+  .fm-sheet-dialog .el-segmented {
+    width: 100%;
+    min-height: 44px;
+  }
+  .fm-sheet .el-segmented__item,
+  .fm-sheet-dialog .el-segmented__item {
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.25;
+    padding: 0 8px;
+    justify-content: center;
+    text-align: center;
+  }
+  /* 弹层与工具栏里的 size=small 按钮（日志「清空」这类）抬到次要档 */
+  .fm-sheet .el-button--small,
+  .fm-sheet-dialog .el-button--small,
+  .tab-toolbar .el-button {
+    min-height: 32px;
+  }
+  /* 顶栏用户名 chip 点开的是账号面板，26 高在手机上偏小 */
+  .user-chip {
+    min-height: 36px;
+  }
+  /* 弹层里的输入控件：整档提到 44（用 EP 的 component-size 变量，wrapper 会跟着长高）。
+     对话框与确认框都 teleport 到 body，拿不到 .page-container 的规则，所以三种容器都要覆盖。
+     字号 16px 是硬要求：iOS Safari 对 <16px 的输入框聚焦时会自动放大页面 */
+  .fm-sheet .el-input,
+  .fm-sheet-dialog .el-input,
+  .el-message-box .el-input,
+  .fm-sheet .el-select,
+  .fm-sheet-dialog .el-select,
+  .fm-sheet .el-input-number,
+  .fm-sheet-dialog .el-input-number {
+    --el-component-size: 44px;
+  }
+  /* EP 的 select 外框写死 min-height:32px，不吃 component-size 变量，只能显式加高 */
+  .fm-sheet .el-select__wrapper,
+  .fm-sheet-dialog .el-select__wrapper,
+  .el-message-box .el-select__wrapper {
+    min-height: 44px;
+  }
+  /* size=large 的输入框（登录页）用 --el-input-height 覆盖，单改 component-size 不生效 */
+  .fm-sheet .el-input,
+  .fm-sheet-dialog .el-input {
+    --el-input-height: 44px;
+  }
+  .fm-sheet .el-input__inner,
+  .fm-sheet .el-textarea__inner,
+  .fm-sheet .el-select__wrapper,
+  .fm-sheet-dialog .el-input__inner,
+  .fm-sheet-dialog .el-textarea__inner,
+  .fm-sheet-dialog .el-select__wrapper {
+    font-size: 16px;
+  }
+  /* 弹层里的按钮也按「主 44 / 次 32」分档：它们同样在 .page-container 之外 */
+  .fm-sheet .el-button--primary:not(.is-text):not(.is-link),
+  .fm-sheet .el-button--success:not(.is-text):not(.is-link),
+  .fm-sheet-dialog .el-button--primary:not(.is-text):not(.is-link),
+  .fm-sheet-dialog .el-button--success:not(.is-text):not(.is-link),
+  .el-message-box .el-button--primary,
+  .el-message-box .el-button--danger {
+    min-height: 44px;
+  }
+  .fm-sheet .el-button.is-text,
+  .fm-sheet-dialog .el-button.is-text,
+  .el-message-box .el-button:not(.el-button--primary):not(.el-button--danger) {
+    min-height: 32px;
+  }
+  .el-message-box {
+    width: 88vw !important;
+    max-width: 420px;
+  }
+  .terminal {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+}
+
+/* —— 桌面对话框在移动形态变成底部弹层 —— */
+/* 桌面 el-dialog 居中；移动端把 overlay 变成贴底容器 */
+.fm-dialog-overlay {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.fm-sheet-dialog {
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: none;
+  border-radius: 16px 16px 0 0;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.fm-sheet-dialog .el-dialog__body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.fm-sheet-dialog .el-dialog__footer {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}

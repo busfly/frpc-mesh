@@ -55,7 +55,7 @@
       <el-col
         v-for="v in displayVersions"
         :key="v.version"
-        :xs="24"
+        :xs="12"
         :sm="12"
         :md="8"
         :lg="6"
@@ -65,7 +65,7 @@
           class="card version-card"
           shadow="never"
           :class="{ 'is-busy': busy }"
-          :body-style="{ padding: '12px 14px' }"
+          :body-style="{ padding: isMobile ? '10px' : '12px 14px' }"
         >
           <div class="version-head">
             <span class="version-name mono">v{{ v.version }}</span>
@@ -141,6 +141,9 @@ import {
   getVersionsLocal
 } from '../api'
 import type { VersionInfo } from '../api/types'
+import { useIsMobile } from '../composables/useMediaQuery'
+
+const isMobile = useIsMobile()
 
 const source = ref<'github' | 'ghfast'>('github')
 const syncing = ref(false)
@@ -267,7 +270,8 @@ async function onDelete(v: VersionInfo) {
   const ok = await ElMessageBox.confirm(`确定删除本地版本 v${v.version} 的二进制文件吗？`, '删除确认', {
     confirmButtonText: '删除',
     cancelButtonText: '取消',
-    type: 'warning'
+    type: 'warning',
+    confirmButtonClass: 'el-button--danger'
   }).catch(() => false)
   if (!ok) return
   try {
@@ -322,6 +326,12 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* 390px 视口 + 同步提示同排时会被挤成两行标签，让它整组换行而不是把标签压断 */
+  flex-wrap: wrap;
+}
+
+.source-label {
+  white-space: nowrap;
 }
 
 .sync-hint {
@@ -389,5 +399,36 @@ onMounted(async () => {
 
 .current-text {
   font-size: 13px;
+}
+
+@media (max-width: 767px) {
+  /* 顶部三项状态在窄屏靠换行排，间距收紧 */
+  .status-items {
+    gap: 16px;
+  }
+  /* 44 高的主按钮 + 「下载链接」在两列窄卡里需要换行余地 */
+  .version-actions {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+  /* 卡片动作是「下载/使用此版本」这类主操作，size=small 的 32px 在手机上偏小 */
+  .version-actions .el-button {
+    min-height: 44px;
+  }
+  .version-name {
+    font-size: 15px;
+  }
+  .version-meta {
+    gap: 6px;
+    font-size: 11px;
+  }
+}
+
+/* 极窄屏（iPhone SE1 等）两列会把按钮挤到换行，退回单列 */
+@media (max-width: 359px) {
+  .version-col {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
 }
 </style>

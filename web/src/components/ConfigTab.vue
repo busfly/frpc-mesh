@@ -2,14 +2,14 @@
   <div>
     <div class="tab-toolbar">
       <span class="text-muted count-tip">配置文件预览（高级配置页面）：后端生成的 frpc TOML，只读</span>
-      <div>
+      <div class="toolbar-right">
         <el-button text :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button type="primary" plain size="small" :icon="CopyDocument" @click="copy">
           复制
         </el-button>
       </div>
     </div>
-    <div v-loading="loading" class="terminal config-terminal">
+    <div ref="termRef" v-loading="loading" class="terminal config-terminal">
       <template v-if="toml">{{ toml }}</template>
       <div v-else class="text-muted log-empty">暂无配置内容</div>
     </div>
@@ -21,11 +21,13 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { apiInstanceConfig } from '../api'
+import { copyHint, copyText } from '../utils/clipboard'
 
 const props = defineProps<{ instanceId: number }>()
 
 const toml = ref('')
 const loading = ref(false)
+const termRef = ref<HTMLElement | null>(null)
 
 async function load() {
   loading.value = true
@@ -44,19 +46,10 @@ async function copy() {
     ElMessage.warning('没有可复制的内容')
     return
   }
-  try {
-    await navigator.clipboard.writeText(toml.value)
-    ElMessage.success('已复制到剪贴板')
-  } catch {
-    // 降级方案
-    const ta = document.createElement('textarea')
-    ta.value = toml.value
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    document.body.removeChild(ta)
-    ElMessage.success('已复制到剪贴板')
-  }
+  // 复用同一套三档兜底：原来 execCommand 返回 false 时也报「已复制」，手机上会谎报成功
+  const r = await copyText(toml.value, termRef.value)
+  const hint = copyHint(r)
+  ElMessage[hint.type](hint.text)
 }
 
 onMounted(load)
@@ -87,5 +80,22 @@ defineExpose({ reload: load })
 
 .log-empty {
   padding: 20px 0;
+}
+
+@media (max-width: 767px) {
+  /* 弹层里 100vh 含被地址栏遮住的部分，终端按视口比例给高，关闭按钮才留在屏内 */
+  .config-terminal {
+    height: 46vh;
+    min-height: 180px;
+  }
+  .tab-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .toolbar-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>

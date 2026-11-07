@@ -8,9 +8,7 @@
         <div class="stat-card" :class="c.cls">
           <div class="stat-label">
             {{ c.label }}
-            <el-tooltip :content="c.tip" placement="top">
-              <el-icon class="stat-help"><QuestionFilled /></el-icon>
-            </el-tooltip>
+<FieldHint :content="c.tip" />
           </div>
           <div class="stat-value">{{ dash[c.key] }}</div>
           <el-icon class="stat-icon"><component :is="c.icon" /></el-icon>
@@ -23,7 +21,9 @@
         <div class="card-header">
           <div class="card-header-text">
             <span class="card-title">FRPS 服务器连接状态</span>
-            <span class="card-subtitle">每一行代表一台远程 frps 服务器及其 frpc 连接</span>
+            <span class="card-subtitle">
+              {{ isMobile ? '每张卡片代表一台远程 frps 服务器及其 frpc 连接' : '每一行代表一台远程 frps 服务器及其 frpc 连接' }}
+            </span>
           </div>
           <el-button text :icon="Refresh" :loading="store.loading" @click="store.refresh()">
             刷新
@@ -31,6 +31,7 @@
         </div>
       </template>
       <el-table
+        v-if="!isMobile"
         :data="dash.instances"
         v-loading="store.loading"
         stripe
@@ -79,12 +80,7 @@
           <template #header>
             <span class="th-enabled">
               启用
-              <el-tooltip
-                content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动"
-                placement="top"
-              >
-                <el-icon class="th-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
+<FieldHint content="启用：立即启动并随服务自动拉起；停用：立即停止且不自动启动" />
             </span>
           </template>
           <template #default="{ row }">
@@ -103,6 +99,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <InstanceCardList
+        v-else
+        :rows="dashRows"
+        empty-text="暂无 FRPS 服务器，请前往「FRPS 服务器」页面创建"
+        more-label="详情"
+        :show-toggle="false"
+        @detail="goDetail"
+        @more="goDetail"
+      />
     </el-card>
   </div>
 </template>
@@ -116,7 +122,6 @@ import {
   CircleCheck,
   Connection,
   Menu,
-  QuestionFilled,
   Refresh,
   Share,
   View
@@ -125,12 +130,32 @@ import { apiGetInstance, apiUpdateInstance } from '../api'
 import { useInstancesStore } from '../stores/instances'
 import { statusTagType, statusText } from '../utils/status'
 import { FRPC_VERSION_FALLBACK_TIP, frpcVersionFallback, frpcVersionLabel } from '../utils/frpcVersion'
+import InstanceCardList, { type InstanceCardRow } from '../components/mobile/InstanceCardList.vue'
+import FieldHint from '../components/mobile/FieldHint.vue'
+import { useIsMobile } from '../composables/useMediaQuery'
 import type { Dashboard, DashboardInstance } from '../api/types'
 
 const router = useRouter()
 const store = useInstancesStore()
 const dash = computed(() => store.dashboard)
 const toggling = reactive<Record<number, boolean>>({})
+const isMobile = useIsMobile()
+
+/** 仪表盘卡片：数据来自 /api/dashboard；「⋯」不做操作面板，直接跳服务器页（一功能一入口） */
+const dashRows = computed<InstanceCardRow[]>(() =>
+  dash.value.instances.map((i) => ({
+    id: i.id,
+    name: i.name,
+    status: i.status,
+    addr: `${i.server_addr}:${i.server_port}`,
+    enabled: i.enabled,
+    proxiesTotal: i.proxies_total,
+    proxiesOnline: i.proxies_online,
+    versionLabel: rowVersionLabel(i),
+    versionFallback: rowVersionFallback(i)
+  }))
+)
+
 
 interface StatCard {
   key: keyof Omit<Dashboard, 'instances'>
@@ -234,13 +259,6 @@ async function onToggleEnabled(row: DashboardInstance, val: boolean) {
   }
 }
 
-.stat-help {
-  font-size: 12px;
-  margin-left: 4px;
-  vertical-align: -1px;
-  opacity: 0.75;
-  cursor: help;
-}
 
 .card-header {
   display: flex;
@@ -289,8 +307,4 @@ async function onToggleEnabled(row: DashboardInstance, val: boolean) {
   gap: 4px;
 }
 
-.th-help {
-  color: #909399;
-  cursor: help;
-}
 </style>

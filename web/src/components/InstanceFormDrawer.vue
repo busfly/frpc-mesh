@@ -2,31 +2,41 @@
   <el-drawer
     :model-value="modelValue"
     :title="isEdit ? '编辑 FRPS 服务器' : '新建 FRPS 服务器'"
-    size="560px"
+    :direction="isMobile ? 'btt' : 'rtl'"
+    :size="isMobile ? '92%' : '560px'"
+    :class="isMobile ? 'fm-sheet fm-form' : ''"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
     @open="onOpen"
   >
+    <template #header="{ titleId, titleClass }">
+      <!-- 把手放标题上方，和代理表单弹层一致（iOS 底部弹层的惯例） -->
+      <div v-if="isMobile" ref="handleEl" class="fm-handle"></div>
+      <span :id="titleId" :class="isMobile ? 'fm-sheet-title' : titleClass || 'el-drawer__title'">{{
+        isEdit ? '编辑 FRPS 服务器' : '新建 FRPS 服务器'
+      }}</span>
+    </template>
     <el-form
       ref="formRef"
       :model="form"
       :rules="rules"
       label-width="110px"
       label-position="top"
+      :scroll-to-error="isMobile"
     >
       <el-divider content-position="left">基本信息</el-divider>
       <el-form-item label="服务器名称（别名）" prop="name">
         <el-input v-model="form.name" placeholder="例如：阿里云 frps" maxlength="50" />
       </el-form-item>
       <el-row :gutter="12">
-        <el-col :span="14">
+        <el-col :xs="24" :span="14">
           <el-form-item label="服务器地址 (server_addr)" prop="server_addr">
             <el-input v-model="form.server_addr" placeholder="IP 或域名，例如 1.2.3.4" />
           </el-form-item>
         </el-col>
-        <el-col :span="10">
+        <el-col :xs="24" :span="10">
           <el-form-item label="服务器端口 (server_port)" prop="server_port">
-            <el-input-number
+            <el-input-number inputmode="numeric"
               v-model="form.server_port"
               :min="1"
               :max="65535"
@@ -38,7 +48,7 @@
         </el-col>
       </el-row>
       <el-row :gutter="12">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="认证方式 (auth_method)">
             <el-select v-model="form.auth_method" class="full-width">
               <el-option label="token" value="token" />
@@ -46,7 +56,7 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item v-if="form.auth_method === 'token'" label="认证 Token" prop="auth_token">
             <el-input
               v-model="form.auth_token"
@@ -58,9 +68,9 @@
         </el-col>
       </el-row>
       <el-row :gutter="12">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="FRPS 管理端口 (dashboard_port)" prop="manage_port">
-            <el-input-number
+            <el-input-number inputmode="numeric"
               v-model="form.manage_port"
               :min="0"
               :max="65535"
@@ -70,7 +80,7 @@
             />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <div class="field-hint">
             frps 管理面板端口，填写后列表「管理」按钮可直达
             <span class="mono">http://服务器地址:管理端口</span>
@@ -87,12 +97,9 @@
         <template #label>
           <span class="label-with-hint">
             frpc 版本
-            <el-tooltip
-              placement="top"
+<FieldHint
               content="老服务端配新客户端（或反之）可能连不上，可只为这台服务器固定一个版本。不指定即跟随「frpc 版本管理」里的默认版本；指定的版本若还没下载，会先用默认版本启动，后台补下载完成后自动重启切过去。"
-            >
-              <el-icon class="hint-icon"><QuestionFilled /></el-icon>
-            </el-tooltip>
+            />
           </span>
         </template>
         <el-select v-model="form.frpc_version" class="full-width">
@@ -134,9 +141,9 @@
             <el-switch v-model="transport.tcp_mux" />
           </el-form-item>
           <el-row :gutter="12">
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="连接池大小 (pool_count)">
-                <el-input-number
+                <el-input-number inputmode="numeric"
                   v-model="transport.pool_count"
                   :min="0"
                   :max="128"
@@ -144,9 +151,9 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="心跳间隔秒 (heartbeat)">
-                <el-input-number
+                <el-input-number inputmode="numeric"
                   v-model="transport.heartbeat"
                   :min="-1"
                   :max="3600"
@@ -156,9 +163,9 @@
             </el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="拨号超时秒 (dial_timeout)">
-                <el-input-number
+                <el-input-number inputmode="numeric"
                   v-model="transport.dial_timeout"
                   :min="-1"
                   :max="3600"
@@ -166,16 +173,16 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="TLS (tls_enable)">
                 <el-switch v-model="transport.tls_enable" />
               </el-form-item>
             </el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="心跳超时秒 (heartbeat_timeout)">
-                <el-input-number
+                <el-input-number inputmode="numeric"
                   v-model="transport.heartbeat_timeout"
                   :min="-1"
                   :max="3600"
@@ -183,9 +190,9 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="多路复用保活秒 (tcp_mux_keepalive)">
-                <el-input-number
+                <el-input-number inputmode="numeric"
                   v-model="transport.tcp_mux_keepalive"
                   :min="-1"
                   :max="3600"
@@ -212,9 +219,9 @@
           </el-form-item>
           <template v-if="admin.enabled">
             <el-row :gutter="12">
-              <el-col :span="12">
+              <el-col :xs="24" :span="12">
                 <el-form-item label="端口 (port)" prop="admin_port">
-                  <el-input-number
+                  <el-input-number inputmode="numeric"
                     v-model="admin.port"
                     :min="1"
                     :max="65535"
@@ -223,7 +230,7 @@
                   />
                 </el-form-item>
               </el-col>
-              <el-col :span="12">
+              <el-col :xs="24" :span="12">
                 <el-form-item label="用户名 (user)">
                   <el-input v-model="admin.user" placeholder="admin" />
                 </el-form-item>
@@ -250,6 +257,9 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { useIsMobile } from '../composables/useMediaQuery'
+import { useSwipeToClose } from '../composables/useSwipeToClose'
+import FieldHint from './mobile/FieldHint.vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { apiCreateInstance, apiUpdateInstance } from '../api'
@@ -268,6 +278,10 @@ const emit = defineEmits<{
 const store = useInstancesStore()
 const formRef = ref<FormInstance>()
 const saving = ref(false)
+
+const isMobile = useIsMobile()
+const handleEl = ref<HTMLElement | null>(null)
+useSwipeToClose(handleEl, () => emit('update:modelValue', false))
 const activeCollapse = ref<string[]>([])
 const protocols = ['tcp', 'kcp', 'quic', 'wss', 'websocket']
 
@@ -470,11 +484,6 @@ async function onSave() {
   gap: 4px;
 }
 
-.hint-icon {
-  color: var(--el-text-color-secondary);
-  cursor: help;
-  font-size: 13px;
-}
 
 .opt-note {
   margin-left: 8px;

@@ -186,4 +186,20 @@ onBeforeUnmount(stopTimer)
 .log-empty {
   padding: 20px 0;
 }
+
+@media (max-width: 767px) {
+  .log-terminal {
+    height: 46vh;
+    min-height: 180px;
+  }
+  .tab-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .toolbar-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 </style>

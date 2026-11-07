@@ -43,3 +43,16 @@ function selectRange(el: HTMLElement): boolean {
   sel.addRange(range)
   return true
 }
+
+/**
+ * 三档结果对应的提示文案。触屏上没有 Ctrl/Cmd+C，措辞按是否有 hover 能力分开，
+ * 免得给手机用户弹出「按 Ctrl/Cmd+C 复制」这种做不到的指令。
+ */
+export function copyHint(r: CopyResult): { type: 'success' | 'info' | 'error'; text: string } {
+  const touch =
+    typeof window !== 'undefined' && !!window.matchMedia && !window.matchMedia('(hover: hover)').matches
+  if (r === 'copied') return { type: 'success', text: '已复制' }
+  if (r === 'selected')
+    return { type: 'info', text: touch ? '已选中，长按可复制' : '已选中，按 Ctrl/Cmd+C 复制' }
+  return { type: 'error', text: '复制失败，请手动选中内容复制' }
+}

@@ -28,12 +28,9 @@
               <template #label>
                 <span class="label-with-hint">
                   定时检查 frpc-mesh 新版本 (auto_update_check)
-                  <el-tooltip
-                    placement="top"
+<FieldHint
                     content="每 6 小时联网检查一次 GitHub Releases，仅在此页与顶栏提醒，不会自动下载或升级"
-                  >
-                    <el-icon class="hint-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
+                  />
                 </span>
               </template>
               <el-switch v-model="settingsForm.auto_update_check" />
@@ -51,12 +48,9 @@
             <div class="card-head">
               <span class="card-title">
                 检查新版本
-                <el-tooltip
-                  placement="right"
+<FieldHint
                   content="检查 GitHub Releases 上 frpc-mesh 的最新版本；二进制运行可就地升级，容器运行请换镜像重建"
-                >
-                  <el-icon class="hint-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
+                />
               </span>
               <el-select
                 v-model="checkSource"
@@ -302,7 +296,9 @@
     <el-dialog
       v-model="notesVisible"
       :title="notesTitle"
-      width="640px"
+      :width="isMobile ? '100%' : '640px'"
+      :class="isMobile ? 'fm-sheet-dialog' : ''"
+      :modal-class="isMobile ? 'fm-dialog-overlay' : undefined"
     >
       <div v-if="info" class="notes-head">
         <span v-if="info.published_at" class="text-muted">
@@ -345,7 +341,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Download, Loading, QuestionFilled, Refresh, Upload } from '@element-plus/icons-vue'
+import { Download, Loading, Refresh, Upload } from '@element-plus/icons-vue'
 import {
   apiChangePassword,
   apiExportBackup,
@@ -359,11 +355,14 @@ import { REPO_ISSUES_URL, REPO_RELEASES_URL, REPO_URL } from '../api/repo'
 import UpgradeGuide from '../components/UpgradeGuide.vue'
 import { useAuthStore } from '../stores/auth'
 import { useInstancesStore } from '../stores/instances'
+import FieldHint from '../components/mobile/FieldHint.vue'
+import { useIsMobile } from '../composables/useMediaQuery'
 import { useUpdateStore } from '../stores/update'
 import { formatTime } from '../utils/status'
 
 const auth = useAuthStore()
 const router = useRouter()
+const isMobile = useIsMobile()
 const instStore = useInstancesStore()
 const update = useUpdateStore()
 
@@ -663,12 +662,6 @@ async function onFileChange(e: Event) {
   align-items: center;
 }
 
-.hint-icon {
-  font-size: 13px;
-  margin-left: 4px;
-  color: var(--el-text-color-secondary);
-  cursor: help;
-}
 
 .update-cols {
   display: flex;
@@ -858,5 +851,15 @@ async function onFileChange(e: Event) {
   color: var(--el-text-color-secondary);
   line-height: 1.7;
   margin-top: 4px;
+}
+/* —— 移动形态 —— */
+@media (max-width: 767px) {
+  /* 两栏靠 EP 的 :xs 自己折成一列，这里只收紧并排项的间距与热区 */
+  .update-cols {
+    gap: 16px;
+  }
+  .update-item {
+    min-width: 108px;
+  }
 }
 </style>
