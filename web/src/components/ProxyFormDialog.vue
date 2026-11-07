@@ -666,6 +666,8 @@ async function onSave() {
   width: 100%;
   display: flex;
   align-items: center;
+  /* 三枚芯片按内容宽度合计约 373px，≤360px 屏（Android 主流宽度）不换行会把最后一枚裁掉 */
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
 }

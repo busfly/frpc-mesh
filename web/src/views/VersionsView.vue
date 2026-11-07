@@ -270,7 +270,8 @@ async function onDelete(v: VersionInfo) {
   const ok = await ElMessageBox.confirm(`确定删除本地版本 v${v.version} 的二进制文件吗？`, '删除确认', {
     confirmButtonText: '删除',
     cancelButtonText: '取消',
-    type: 'warning'
+    type: 'warning',
+    confirmButtonClass: 'el-button--danger'
   }).catch(() => false)
   if (!ok) return
   try {
@@ -325,6 +326,12 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* 390px 视口 + 同步提示同排时会被挤成两行标签，让它整组换行而不是把标签压断 */
+  flex-wrap: wrap;
+}
+
+.source-label {
+  white-space: nowrap;
 }
 
 .sync-hint {

@@ -199,7 +199,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 10. 安全区：无头 Chrome 里 `env(safe-area-inset-*)` 恒为 0，**不能断言像素值**。改为两条可测断言：`index.html` 的 viewport 含 `viewport-fit=cover`；弹层 footer 与顶栏的 computed style 里 `padding-bottom` / `padding-top` 声明了 `env(...)`（用 `getPropertyValue` 检查声明串，而非解析后的 0px）。真机再人工确认刘海与底部工具栏不遮挡。
 11. 桌面回归：1440×844 下断言 `el-table` 存在、`el-aside` 220px、无移动 drawer、无 `ProxyCardList` 节点。
 
-**跑通这套路子时踩到的七条，记下来免得下次重新踩**
+**跑通这套路子时踩到的十条，记下来免得下次重新踩**
 
 1. 无头 Chrome 的 `mobile: true` 仿真**不会**把 `(hover: hover)` 改成 `none`（`Emulation.setEmulatedMedia` 也压不住）。凡是靠 hover 判触屏的分支（`FieldHint` 走 tooltip 还是可点问号、复制兜底文案的措辞）在验收里永远只会走桌面分支，必须在 `Page.addScriptToEvaluateOnNewDocument` 里替页面重写 `matchMedia`，桌面段落跑完再 `removeScriptToEvaluateOnNewDocument` 摘掉。
 2. `el-drawer` / `el-dialog` 有约 300ms 开合动画，动画里元素的 rect 还在位移：不等落定就量「保存按钮是否在屏内」、就按坐标点按钮，会得到假的 FAIL。凡是「刚打开就要量/就要点」的步骤，中间补 600–700ms。
@@ -208,6 +208,9 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 5. `el-drawer` 关闭后节点仍在 DOM（只是隐藏），「关掉了」要按 `getBoundingClientRect().height === 0` 判，不能按「查不到节点」。
 6. 验收会真的打后端建/删数据，所以灌数据必须幂等：实例和代理都按名字补齐，测试专用的 `cdp-mobile-prox` 每轮开头先清掉；删除断言要点**自己新建的那张卡**，否则每跑一轮就吃掉一条演示数据，跑到后面页面直接空列表。
 7. 填表单按 `.el-form-item__label` 的文字定位字段，别按 placeholder —— placeholder 里写的是「例如: web-server」，不含「名称」，按 placeholder 找会找不到，而页面里的 JS 异常被 CDP 吞掉后只会表现成「保存没生效」。
+8. 「文档级无横向溢出」抓不到真溢出：`overflow-y: auto` 会把同元素的 `overflow-x` 连带算成 `auto`，超宽内容变成容器内横滚，`documentElement.scrollWidth` 全程正常。独立验收就是在 320/360 上发现「本地地址」的快捷芯片排被裁了一半，而自研脚本一路绿灯。判法要逐容器比 `scrollWidth > clientWidth`，再给刻意可横滚的（chip 条、终端）留白名单。
+9. 热区与字号审计只扫页内选择器会漏两族：teleport 到 body 的弹层内控件，以及**不进弹层、直接铺在页面上**的表单（设置页改密码曾经停在 32 高 + 14 字号，iOS 聚焦必放大整页）。44/16 这一档要么覆盖「页面 + 三种弹层容器」，要么审计里两类都扫。
+10. 「样式表里出现过 `env(safe-area-inset)`」这类全站扫描式断言几乎恒真（任何一处无关规则含该串就算过）；要落到**具体选择器 + 当前可见的具体元素**，否则实现被改坏了也不会红。同类问题：用 `.fm-sheet.btt` 直取弹层会量到一个隐藏容器，取 `height > 0` 的那个才有意义。
 
 **组件级冒烟（可选，不阻塞本轮）**：`useSwipeToClose` 阈值、`useIsMobile` 切换、卡片列表渲染与事件冒泡。引入 vitest 成本约 1–2 天，本轮以 CDP 端到端为准，vitest 留下一轮再定。
 
@@ -221,7 +224,7 @@ frpc-mesh 的 Web 面板按桌面设计，手机访问基本不可用。核实�
 2. 分支 `feat/mobile-adaptation` → 实现 → 互审 + 自动化验收 → 本地打包。
 3. 用户验收放行后：push → PR（`Closes #<issue>`）→ 合并 → tag → Release 挂 4 包 + `sha256sums.txt`。
 4. 再单独确认是否重建生产容器（隧道中断数秒）。
-5. **版本号待定**：本轮是纯前端的功能新增，按既有规则默认走 patch（1.1.2）；但移动端适配属于「增加了较大的功能」，也可能该走 1.2.0。打 tag 前需与用户确认一次。
+5. **版本号定为 1.2.0**：本轮是「增加了较大的功能」（整站新增一种使用形态，16 个提交 / 32 个文件），按既有规则不涨中间位、但够得上 minor；内部评审与此前 v1.1.0 的先例一致。GitHub 推送与 Release 按用户指示暂缓，先只升级生产容器。
 
 ## 13. 明确不做
 

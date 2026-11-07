@@ -3,7 +3,7 @@
     <div v-for="row in rows" :key="row.id" class="fm-card">
       <div class="fm-card-row1">
         <span class="status-dot" :style="{ background: statusDotColor(row.status) }"></span>
-        <span class="fm-card-name" @click="emit('detail', row.id)">{{ row.name }}</span>
+        <button type="button" class="fm-card-name" @click="emit('detail', row.id)">{{ row.name }}</button>
         <span class="fm-card-state">{{ statusText(row.status) }}</span>
       </div>
       <div class="fm-card-row">

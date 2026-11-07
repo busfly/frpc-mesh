@@ -148,8 +148,9 @@
   gap: 8px;
 }
 .fm-card-k {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
+  /* 键名是卡片里信息量最大的辅助文字：11px + secondary 在强光下对比不足，抬到 12px + regular */
+  font-size: 12px;
+  color: var(--el-text-color-regular);
   flex: none;
 }
 .fm-card-sub {
@@ -263,6 +264,44 @@
   /* 卡片里的启用开关：EP 把 height 写死在 .el-switch 上（32px），padding 撑不开，只能显式加高 */
   .fm-card .el-switch {
     height: 44px;
+  }
+  /* 页内输入控件也走 44/16 这一档：设置页的「修改密码」「导入备份」直接铺在页面里，
+     不进弹层，早期只覆盖了弹层，导致这几处漏成 32 高 + 14 字号（iOS 聚焦必放大） */
+  .page-container .el-input,
+  .page-container .el-select,
+  .page-container .el-input-number {
+    --el-component-size: 44px;
+    --el-input-height: 44px;
+  }
+  .page-container .el-select__wrapper {
+    min-height: 44px;
+  }
+  .page-container .el-input__inner,
+  .page-container .el-textarea__inner,
+  .page-container .el-select__wrapper {
+    font-size: 16px;
+  }
+  /* 说明问号的可视大小保持不变，只在触屏时把点按热区抬到次要档（32）：
+     18×18 是桌面「别绑整卡」的锚点，手机上则要点得中 */
+  .fm-hint-btn {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  /* 弹层里的分段选择器（代理类型、传输模式）：EP 的 .el-segmented 写死 min-height:32px，
+     项靠 stretch 跟随，所以只抬外壳就能把每档拉到 ~40 */
+  .fm-sheet .el-segmented,
+  .fm-sheet-dialog .el-segmented {
+    min-height: 44px;
+  }
+  /* 弹层与工具栏里的 size=small 按钮（日志「清空」这类）抬到次要档 */
+  .fm-sheet .el-button--small,
+  .fm-sheet-dialog .el-button--small,
+  .tab-toolbar .el-button {
+    min-height: 32px;
+  }
+  /* 顶栏用户名 chip 点开的是账号面板，26 高在手机上偏小 */
+  .user-chip {
+    min-height: 36px;
   }
   /* 弹层里的输入控件：整档提到 44（用 EP 的 component-size 变量，wrapper 会跟着长高）。
      对话框与确认框都 teleport 到 body，拿不到 .page-container 的规则，所以三种容器都要覆盖。

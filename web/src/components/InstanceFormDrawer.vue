@@ -9,7 +9,13 @@
     @update:model-value="emit('update:modelValue', $event)"
     @open="onOpen"
   >
-    <div v-if="isMobile" ref="handleEl" class="fm-handle"></div>
+    <template #header="{ titleId, titleClass }">
+      <!-- 把手放标题上方，和代理表单弹层一致（iOS 底部弹层的惯例） -->
+      <div v-if="isMobile" ref="handleEl" class="fm-handle"></div>
+      <span :id="titleId" :class="isMobile ? 'fm-sheet-title' : titleClass || 'el-drawer__title'">{{
+        isEdit ? '编辑 FRPS 服务器' : '新建 FRPS 服务器'
+      }}</span>
+    </template>
     <el-form
       ref="formRef"
       :model="form"

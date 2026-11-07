@@ -226,31 +226,36 @@ async function loginIfNeeded(S) {
 
 /**
  * 页面在移动形态下不该出现横向溢出。
- * 注意：EP 表格撑宽时是在自己的 .el-table__body-wrapper 里横滚，文档级 scrollWidth 看不出来，
- * 所以「有没有表格」必须用下面的结构性断言单独判；这里只兜住真正的文档级溢出。
+ * 三档一起判：文档级、主内容区、以及「容器自身能不能横滚」——
+ * 只判前两档会漏掉被 overflow-x:auto 裁掉的内容（弹层 body 只要设了 overflow-y:auto，
+ * x 会连带算成 auto，超宽芯片被滚出可视区却永远不触发文档级溢出；独立验收就是这么漏了一条）。
+ * 刻意可横滚的容器（chip 条、终端）在 LEGIT 里白名单放行。
  */
 async function noHorizontalOverflow(S) {
   return S.js(`(() => {
     const de = document.documentElement;
     const main = document.querySelector('.main-content') || de;
-    const wide = [...document.querySelectorAll('body *')].filter((el) => {
-      const cs = getComputedStyle(el);
-      if (cs.overflowX === 'auto' || cs.overflowX === 'scroll') return false;
-      const r = el.getBoundingClientRect();
-      return r.right > window.innerWidth + 1 && r.width > 0;
-    });
-    const scrollers = [...document.querySelectorAll('body *')].filter((el) => {
-      const cs = getComputedStyle(el);
-      if (cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') return false;
-      if (el.matches('.fm-chips, .fm-chips *')) return false;   // chip 条刻意可横滚
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && el.scrollWidth > el.clientWidth + 1;
-    });
+    const box = (el) => el.getBoundingClientRect();
+    const visible = (el) => { const r = box(el); return r.width > 0 && r.height > 0 };
+    const isScrollBox = (el) => { const cs = getComputedStyle(el); return cs.overflowX === 'auto' || cs.overflowX === 'scroll' };
+    // 刻意可横滚的容器（chip 条、日志/配置终端）与 EP 自己的滚动盒子不算问题
+    const LEGIT = '.fm-chips, .terminal, .el-textarea__inner, .el-scrollbar__wrap, textarea, pre';
+    const inScrollBox = (el) => {
+      for (let p = el.parentElement; p; p = p.parentElement) if (p.matches(LEGIT) || isScrollBox(p)) return true;
+      return false;
+    };
+    // 溢出屏幕且不在合法滚动容器里：真的会把内容裁掉
+    const wide = [...document.querySelectorAll('body *')].filter((el) =>
+      visible(el) && box(el).right > window.innerWidth + 1 && !inScrollBox(el));
+    // 溢出屏幕但在合法滚动容器里，可那个容器本身不该能横滚（如弹层 body 被 overflow-y:auto 连带变成 x:auto）
+    const scrollers = [...document.querySelectorAll('body *')].filter((el) =>
+      visible(el) && isScrollBox(el) && !el.matches(LEGIT) && !el.closest(LEGIT) && el.scrollWidth > el.clientWidth + 1);
+    const nm = (e) => String(e.className || e.tagName).split(' ').filter(Boolean).slice(0, 2).join('.');
     return {
       doc: de.scrollWidth <= window.innerWidth + 1,
       main: main.scrollWidth <= main.clientWidth + 1,
-      offenders: wide.slice(0, 3).map((e) => String(e.className || e.tagName).slice(0, 60)),
-      innerScrollers: scrollers.slice(0, 3).map((e) => String(e.className || e.tagName).slice(0, 60))
+      offenders: wide.slice(0, 3).map((e) => nm(e) + '@' + Math.round(box(e).right)),
+      scrollerNames: scrollers.slice(0, 3).map((e) => nm(e) + ':' + e.scrollWidth + '/' + e.clientWidth)
     };
   })()`)
 }
@@ -277,7 +282,11 @@ async function run() {
       await S.wait('document.querySelector(".page-container") || document.querySelector(".page-title")', `page ${path}`)
       await new Promise((r) => setTimeout(r, 600))
       const r = await noHorizontalOverflow(S)
-      check(`[${path}] 无横向溢出`, r.doc && r.main, JSON.stringify(r))
+      check(
+        `[${path}] 无横向溢出（含弹层内部）`,
+        r.doc && r.main && r.offenders.length === 0 && r.scrollerNames.length === 0,
+        JSON.stringify(r)
+      )
       if (TABLE_PAGES.includes(path)) {
         const shape = await S.js(`(() => ({
           table: !!document.querySelector('.el-table'),
@@ -308,24 +317,30 @@ async function run() {
       })()`
     })
 
-    // —— 触摸热区：主要可点元素 ≥44、次要文字按钮 ≥32（逐页审，含汉堡与卡片「⋯」）——
+    // —— 触摸热区：主要可点元素与页内输入框 ≥44、次要（文字按钮、说明问号）≥32 ——
+    // 输入框这一族早先漏了：设置页「修改密码」不在弹层里，直接铺在页面上，
+    // 只审弹层就永远看不到它停在 32 高 + 14 字号（iOS 聚焦会强制放大整页）
     const tapBad = []
     for (const path of PAGES) {
       await S.cmd('Page.navigate', { url: BASE + path })
       await S.wait('document.querySelector(".page-container")', `tap audit ${path}`)
       await new Promise((r) => setTimeout(r, 500))
       const t = await S.js(`(() => {
-        const PRIM = '.fm-more, .fm-chip, .hamburger, .el-button--primary:not(.is-text):not(.is-link), .el-button--success:not(.is-text):not(.is-link), .fm-card .el-switch';
-        const SECOND = '.el-button.is-text, .el-button.is-link';
+        const PRIM = '.fm-more, .fm-chip, .hamburger, .el-button--primary:not(.is-text):not(.is-link), .el-button--success:not(.is-text):not(.is-link), .fm-card .el-switch, .page-container .el-input__wrapper, .page-container .el-select__wrapper';
+        const SECOND = '.el-button.is-text, .el-button.is-link, .fm-hint-btn, .tab-toolbar .el-button, .user-chip';
         const bad = (sel, min) => [...document.querySelectorAll(sel)]
           .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && Math.round(r.height) < min; })
-          .map((el) => (el.innerText || '').trim().slice(0, 6) + '|' + String(el.getAttribute('class') || '') + ' h=' + Math.round(el.getBoundingClientRect().height));
-        return { primary: bad(PRIM, 44), secondary: bad(SECOND, 32) };
+          .map((el) => (el.innerText || '').trim().slice(0, 6) + '|' + String(el.getAttribute('class') || '').split(' ').filter(Boolean).slice(0, 2).join('.') + ' h=' + Math.round(el.getBoundingClientRect().height));
+        const smallFont = [...document.querySelectorAll('.page-container .el-input__inner, .page-container .el-select__wrapper')]
+          .filter((el) => parseFloat(getComputedStyle(el).fontSize) < 16)
+          .map((el) => (el.placeholder || el.tagName) + ' fs=' + getComputedStyle(el).fontSize);
+        return { primary: bad(PRIM, 44), secondary: bad(SECOND, 32), smallFont };
       })()`)
       for (const x of t.primary) tapBad.push(`${path} 主:${x}`)
       for (const x of t.secondary) tapBad.push(`${path} 次:${x}`)
+      for (const x of t.smallFont) tapBad.push(`${path} 字号:${x}`)
     }
-    check('[移动] 触摸热区达标（主44/次32）', tapBad.length === 0, tapBad.slice(0, 4).join(' | '))
+    check('[移动] 触摸热区与页内输入框达标（主44/次32/输入16号）', tapBad.length === 0, tapBad.slice(0, 6).join(' | '))
 
     // 规格 §4.2：仪表盘只看状态，启停回服务器页做，卡片上不重复放开关
     await S.cmd('Page.navigate', { url: `${BASE}/` })
@@ -366,7 +381,9 @@ async function run() {
       const hs = [...document.querySelectorAll('.fm-actionsheet .as-item')].map((e) => Math.round(e.getBoundingClientRect().height));
       return { items, hs, tall: hs.every((h) => h >= 44) };
     })()`)
-    check('[移动] 操作面板项与桌面一致', ['编辑', '重启', '管理面板', '删除'].every((x) => asOK.items.includes(x)), JSON.stringify(asOK.items))
+    check('[移动] 操作面板有编辑与删除', asOK.items.includes('编辑') && asOK.items.includes('删除'), JSON.stringify(asOK.items))
+    // 与桌面操作列的一致性在下面 1440 基线里对着真实表格比（早先这里是硬编码清单，桌面改了也不会报警）
+    const mobileActions = asOK.items
     check('[移动] 操作面板行高 ≥44', asOK.tall, JSON.stringify(asOK.hs))
     await tapAt(S, '.fm-actionsheet .as-cancel')
     await new Promise((r) => setTimeout(r, 700))
@@ -376,18 +393,21 @@ async function run() {
       ` return !d || d.getBoundingClientRect().height === 0 })()`
     ))
 
-    // 卡片数 == 后端代理数
+    // 卡片数 == 当前激活那台服务器的代理数（不能拿 list[0] 比：默认激活的那台未必是第一台，
+    // URL 里带 ?instance= 时更是直接错位）
     await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
     await S.wait('document.querySelector(".fm-more")', 'proxy cards')
     const counts = await S.js(`document.querySelectorAll('.fm-cards .fm-card').length`)
     const api = await S.js(
       `(async () => { const t = localStorage.getItem('frpc_mesh_token');` +
-      ` const r = await fetch('/api/instances', { headers: { Authorization: 'Bearer ' + t } });` +
-      ` const list = await r.json();` +
-      ` const r2 = await fetch('/api/instances/' + list[0].id + '/proxies', { headers: { Authorization: 'Bearer ' + t } });` +
+      ` const active = document.querySelector('.fm-chips:not(.fm-type-chips) .fm-chip[aria-selected="true"]');` +
+      ` const name = active ? active.innerText.trim() : '';` +
+      ` const list = await (await fetch('/api/instances', { headers: { Authorization: 'Bearer ' + t } })).json();` +
+      ` const hit = list.find((i) => i.name === name) || list[0];` +
+      ` const r2 = await fetch('/api/instances/' + hit.id + '/proxies', { headers: { Authorization: 'Bearer ' + t } });` +
       ` return (await r2.json()).length })()`
     )
-    check('[移动] 卡片条数与后端一致', counts === api, `卡片 ${counts} / 接口 ${api}`)
+    check('[移动] 卡片条数与当前服务器代理数一致', counts === api, `卡片 ${counts} / 接口 ${api}`)
 
     // 表单弹层：贴底、字段单列、控件够大、保存可见
     await tapAt(S, '.fm-chips:not(.fm-type-chips) .fm-chip')
@@ -408,15 +428,48 @@ async function run() {
       const short = wraps.filter((w) => Math.round(w.getBoundingClientRect().height) < 44).length;
       const tiny = [...sheet.querySelectorAll('.el-input__inner')].filter((i) => parseFloat(getComputedStyle(i).fontSize) < 16).length;
       const foot = sheet.querySelector('.el-drawer__footer, .dialog-footer');
+      // 弹层内部横向溢出：overflow-y:auto 会连带把 overflow-x 算成 auto，超宽内容被滚出可视区，
+      // 文档级 scrollWidth 看不出来 —— 320/360 屏上「本地地址」的快捷芯片就是这么被裁掉的
+      const body = sheet.querySelector('.el-drawer__body, .el-dialog__body');
+      const spill = [...sheet.querySelectorAll('*')].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.right > window.innerWidth + 1 && !(el.closest('.fm-chips') || el.matches('.terminal'));
+      }).slice(0, 2).map((el) => String(el.className || el.tagName).split(' ').filter(Boolean).slice(0, 2).join('.') + '@' + Math.round(el.getBoundingClientRect().right));
       return {
         sheetH: Math.round(sheet.getBoundingClientRect().height),
         cols: cols.length, narrow, wraps: wraps.length, short, tiny,
+        bodyW: body ? body.scrollWidth : 0, bodyCw: body ? body.clientWidth : 0, spill,
         footVisible: !!foot && foot.getBoundingClientRect().bottom <= window.innerHeight + 1
       };
     })()`)
     check('[移动] 表单贴底、字段单列', formOK.sheetH > 500 && formOK.cols > 0 && formOK.narrow === 0, JSON.stringify(formOK))
     check('[移动] 输入框 44 高且字号≥16（防 iOS 聚焦放大）', formOK.wraps > 0 && formOK.short === 0 && formOK.tiny === 0, JSON.stringify(formOK))
     check('[移动] 保存按钮吸底可见', formOK.footVisible, JSON.stringify(formOK))
+    check('[移动] 表单弹层内部不横向溢出', formOK.bodyW <= formOK.bodyCw + 1 && formOK.spill.length === 0, JSON.stringify(formOK))
+
+    // 分段选择器只在「安全隧道」这类表单里出现（提供方 / 访问方），单独开一次来量它
+    await tapText(S, '取消', `document.querySelector('.fm-form')`)
+    await new Promise((r) => setTimeout(r, 700))
+    await tapText(S, 'STCP', 'document.querySelector(".fm-type-chips")')
+    await S.wait('document.querySelector(".fm-form .el-segmented")', 'role segmented sheet')
+    await new Promise((r) => setTimeout(r, 700))
+    const segOK = await S.js(
+      `(() => { const seg = document.querySelector('.fm-form .el-segmented');` +
+      ` if (!seg) return { shell: 0, items: [] };` +
+      ` const items = [...seg.querySelectorAll('.el-segmented__item')].map((e) => Math.round(e.getBoundingClientRect().height));` +
+      ` return { shell: Math.round(seg.getBoundingClientRect().height), items } })()`
+    )
+    check('[移动] 弹层内分段选择器够点（壳≥44 / 项≥40）', segOK.items.length > 0 && segOK.shell >= 44 && segOK.items.every((h) => h >= 40), JSON.stringify(segOK))
+
+    // 底部弹层的圆角与限高：EP 的抽屉方向类是裸 `btt`，写成 el-drawer--bottom 会永不命中。
+    // 必须在表单弹层真的开着的时候量，且只量 height>0 的那个：
+    // 按类名直取会先量到一个还留在 DOM 里的隐藏 ActionSheet（早先那条断言就是这么一直「绿」的）
+    const sheetShape = await S.js(
+      `(() => { const el = [...document.querySelectorAll('.fm-sheet.btt')].find((n) => n.getBoundingClientRect().height > 0);` +
+      ` if (!el) return { found: false }; const cs = getComputedStyle(el);` +
+      ` return { found: true, cls: String(el.className).slice(0, 60), radius: cs.borderTopLeftRadius, maxH: cs.maxHeight } })()`
+    )
+    check('[移动] 底部弹层圆角与限高真的生效', sheetShape.found && parseFloat(sheetShape.radius) >= 12, JSON.stringify(sheetShape))
     await S.shot('form-sheet.png')
 
     // 服务器表单里的「frpc 版本」说明：触屏必须是可点的问号，而不是只有 hover 才出现的 tooltip
@@ -452,14 +505,6 @@ async function run() {
       ` stuck: r.height > 0 && r.top >= 0 && r.top < 120 } })()`
     )
     check('[移动] 服务器 chip 条真的吸顶', sticky.scrolled && sticky.stuck, JSON.stringify(sticky))
-
-    // 底部弹层的圆角与限高：EP 的抽屉方向类是裸 `btt`，写成 el-drawer--bottom 会永不命中
-    const sheetShape = await S.js(
-      `(() => { const el = document.querySelector('.fm-sheet.btt');` +
-      ` if (!el) return { found: false }; const cs = getComputedStyle(el);` +
-      ` return { found: true, radius: cs.borderTopLeftRadius, maxH: cs.maxHeight } })()`
-    )
-    check('[移动] 底部弹层圆角与限高真的生效', sheetShape.found && parseFloat(sheetShape.radius) >= 12, JSON.stringify(sheetShape))
 
     // 下滑关闭手势：在把手上造 touch 序列，位移 >80px 应当关掉弹层（规格 §6.2 承诺过，之前只测了取消按钮）
     await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
@@ -514,11 +559,16 @@ async function run() {
     check('[移动] viewport 有 viewport-fit=cover', await S.js(
       `document.querySelector('meta[name=viewport]').content.includes('viewport-fit=cover')`
     ))
-    check('[移动] 样式里真的写了 env(safe-area-inset)', await S.js(
-      `[...document.styleSheets].some((sh) => { try {` +
-      ` return [...sh.cssRules].some((r) => /env\\(safe-area-inset/.test(r.cssText))` +
-      ` } catch (e) { return false } })`
-    ), '没有任何规则引用 env(safe-area-inset)')
+    // 安全区：只判「底部动作区那几条规则」真的带 env()，不做全站扫（全站扫是恒真式，
+    // 任何一处无关规则里有 env() 都会误判成通过）
+    const safeArea = await S.js(
+      `(() => { const hit = (want) => [...document.styleSheets].some((sh) => { try {` +
+      ` return [...sh.cssRules].some((r) => r.selectorText && r.selectorText.includes(want) &&` +
+      ` r.cssText.includes('env(safe-area-inset-bottom)'))` +
+      ` } catch (e) { return false } });` +
+      ` return { drawer: hit('.fm-sheet .el-drawer__footer'), dialog: hit('.fm-sheet-dialog .el-dialog__footer') } })()`
+    )
+    check('[移动] 弹层底部动作区声明了 safe-area', safeArea.drawer && safeArea.dialog, JSON.stringify(safeArea))
 
     // 卡片上真实新建一条代理（走后端，验证表单在手机上可用）
     await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
@@ -632,9 +682,10 @@ async function run() {
     await S.js('Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange"))')
     await new Promise((r) => setTimeout(r, 400))
     await S.js('Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange"))')
-    // 页面刚 navigate，10 秒轮询计时器是全新的；700ms 窗口内只有「回前台」这一轮刷新
+    // 页面刚 navigate，10 秒轮询计时器是全新的；窗口内出现请求只可能来自「回前台」这一路。
+    // 判 ≥1 而不是恰好 2：dashboard 与 instances 谁先落地取决于挂载顺序，硬数会偶发误红
     await new Promise((r) => setTimeout(r, 700))
-    check('[移动] 回前台补刷一轮（instances+dashboard）', reqs.length === 2, `捕获 ${reqs.length} 次: ${reqs.join(',')}`)
+    check('[移动] 回前台补刷一轮', reqs.length >= 1 && reqs.every((u) => /\/api\/(instances|dashboard)/.test(u)), `捕获 ${reqs.length} 次: ${reqs.join(',')}`)
 
     // —— 桌面回归基线 1440×844 ——
     await S.cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: hoverPatch.identifier })
@@ -647,6 +698,24 @@ async function run() {
     check('[桌面] 侧栏存在且 220px', await S.js(`(() => { const a = document.querySelector('.el-aside'); return a && a.getBoundingClientRect().width === 220 })()`))
     check('[桌面] 无移动卡片列表', await S.js('!document.querySelector(".fm-cards")'))
     await S.shot('desktop-proxies.png')
+
+    // 操作项口径与桌面真实对齐：读桌面第一行操作列的按钮文案，和移动端面板逐项比
+    await S.cmd('Page.navigate', { url: `${BASE}/instances` })
+    await S.wait('document.querySelector(".el-table__row")', 'desktop instances table')
+    const desktopActions = await S.js(
+      `(() => { const row = document.querySelector('.el-table__row');` +
+      ` const cells = row.querySelectorAll('td'); const last = cells[cells.length - 1];` +
+      ` return [...last.querySelectorAll('button, .el-button')].map((b) => b.innerText.trim()).filter(Boolean) })()`
+    )
+    // 桌面操作列受列宽限制用短词（管理），手机面板整行用全称（管理面板），
+    // 所以按「互相包含」配对，并把手机面板特有的「取消」行剔出比较
+    const dAct = desktopActions.filter((x) => x !== '取消').sort()
+    const mAct = mobileActions.filter((x) => x !== '取消').sort()
+    check(
+      '[桌面↔移动] 操作面板项与桌面操作列一致',
+      dAct.length > 0 && dAct.length === mAct.length && dAct.every((d) => mAct.some((m) => m === d || m.includes(d) || d.includes(m))),
+      `桌面 ${JSON.stringify(dAct)} / 移动 ${JSON.stringify(mAct)}`
+    )
 
   // —— 登录页（清掉登录态单独看一档：规格 §4.1 要求 44 高输入 + 16px 字号，之前脚本没看过登录页）——
   await S.setViewport(WIDTH, HEIGHT)

@@ -120,7 +120,7 @@
       <InstanceCardList
         v-else
         :rows="cardRows"
-        empty-text="暂无服务器，点击右上角「新建 FRPS 服务器」开始"
+        empty-text="暂无服务器，点上方「新建 FRPS 服务器」开始"
         @detail="goDetail"
         @toggle="onToggleEnabledById"
         @more="openActions"
