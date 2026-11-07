@@ -455,11 +455,19 @@ async function run() {
     await new Promise((r) => setTimeout(r, 700))
     const segOK = await S.js(
       `(() => { const seg = document.querySelector('.fm-form .el-segmented');` +
-      ` if (!seg) return { shell: 0, items: [] };` +
+      ` if (!seg) return { shell: 0, items: [], bodySW: 0, bodyCW: 0, spill: [] };` +
       ` const items = [...seg.querySelectorAll('.el-segmented__item')].map((e) => Math.round(e.getBoundingClientRect().height));` +
-      ` return { shell: Math.round(seg.getBoundingClientRect().height), items } })()`
+      ` const body = document.querySelector('.fm-form .el-drawer__body');` +
+      ` const spill = [...document.querySelectorAll('.fm-form *')].filter((el) => { const r = el.getBoundingClientRect();` +
+      ` return r.width > 0 && r.right > window.innerWidth + 1 }).slice(0, 2)` +
+      ` .map((el) => String(el.className || el.tagName).split(' ').filter(Boolean).slice(0, 2).join('.') + '@' + Math.round(el.getBoundingClientRect().right));` +
+      ` return { shell: Math.round(seg.getBoundingClientRect().height), items, bodySW: body.scrollWidth, bodyCW: body.clientWidth, spill } })()`
     )
-    check('[移动] 弹层内分段选择器够点（壳≥44 / 项≥40）', segOK.items.length > 0 && segOK.shell >= 44 && segOK.items.every((h) => h >= 40), JSON.stringify(segOK))
+    check(
+      '[移动] 弹层内分段选择器够点且不溢出（壳≥44 / 项≥40 / 不顶出屏）',
+      segOK.items.length > 0 && segOK.shell >= 44 && segOK.items.every((h) => h >= 40) && segOK.bodySW <= segOK.bodyCW + 1 && segOK.spill.length === 0,
+      JSON.stringify(segOK)
+    )
 
     // 底部弹层的圆角与限高：EP 的抽屉方向类是裸 `btt`，写成 el-drawer--bottom 会永不命中。
     // 必须在表单弹层真的开着的时候量，且只量 height>0 的那个：

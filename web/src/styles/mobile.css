@@ -287,11 +287,21 @@
     min-width: 32px;
     min-height: 32px;
   }
-  /* 弹层里的分段选择器（代理类型、传输模式）：EP 的 .el-segmented 写死 min-height:32px，
-     项靠 stretch 跟随，所以只抬外壳就能把每档拉到 ~40 */
+  /* 弹层里的分段选择器（安全隧道的提供方/访问方）：EP 的外壳是 inline-flex，按内容撑宽，
+     320 屏上两项中文全称合计 324px 会把第二项顶出屏幕；改成占满宽 + 两项等分 + 允许换行 */
   .fm-sheet .el-segmented,
   .fm-sheet-dialog .el-segmented {
+    width: 100%;
     min-height: 44px;
+  }
+  .fm-sheet .el-segmented__item,
+  .fm-sheet-dialog .el-segmented__item {
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.25;
+    padding: 0 8px;
+    justify-content: center;
+    text-align: center;
   }
   /* 弹层与工具栏里的 size=small 按钮（日志「清空」这类）抬到次要档 */
   .fm-sheet .el-button--small,
