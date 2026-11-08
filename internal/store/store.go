@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS instances(
   enabled INTEGER NOT NULL DEFAULT 0,
   transport TEXT NOT NULL DEFAULT '{}',
   admin TEXT NOT NULL DEFAULT '{}',
+  dash TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   frpc_version TEXT NOT NULL DEFAULT ''
@@ -177,6 +178,38 @@ func (s *Store) migrateV2() error {
 			return err
 		}
 	}
+	return s.migrateV3()
+}
+
+// migrateV3 为旧库补充 dash 列（frps 管理接口凭据，JSON）
+func (s *Store) migrateV3() error {
+	rows, err := s.db.Query(`PRAGMA table_info(instances)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	hasDash := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull int
+		var dflt any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "dash" {
+			hasDash = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !hasDash {
+		if _, err := s.db.Exec(`ALTER TABLE instances ADD COLUMN dash TEXT NOT NULL DEFAULT '{}'`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -244,19 +277,20 @@ func (s *Store) CountUsers() int {
 func scanInstance(row interface{ Scan(...any) error }) (*model.Instance, error) {
 	var in model.Instance
 	var enabled int
-	var transport, admin string
+	var transport, admin, dash string
 	err := row.Scan(&in.ID, &in.Name, &in.ServerAddr, &in.ServerPort, &in.AuthMethod,
-		&in.AuthToken, &enabled, &transport, &admin, &in.CreatedAt, &in.UpdatedAt, &in.ManagePort, &in.Remark, &in.Domain, &in.FrpcVersion)
+		&in.AuthToken, &enabled, &transport, &admin, &in.CreatedAt, &in.UpdatedAt, &in.ManagePort, &in.Remark, &in.Domain, &in.FrpcVersion, &dash)
 	if err != nil {
 		return nil, err
 	}
 	in.Enabled = enabled == 1
 	json.Unmarshal([]byte(transport), &in.Transport)
 	json.Unmarshal([]byte(admin), &in.AdminCfg)
+	json.Unmarshal([]byte(dash), &in.Dashboard)
 	return &in, nil
 }
 
-const instanceCols = `id,name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain,frpc_version`
+const instanceCols = `id,name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain,frpc_version,dash`
 
 func (s *Store) ListInstances() ([]*model.Instance, error) {
 	rows, err := s.db.Query(`SELECT ` + instanceCols + ` FROM instances ORDER BY id`)
@@ -283,12 +317,13 @@ func (s *Store) GetInstance(id int64) (*model.Instance, error) {
 func (s *Store) CreateInstance(in *model.Instance) error {
 	tb, _ := json.Marshal(in.Transport)
 	ab, _ := json.Marshal(in.AdminCfg)
+	dashJSON, _ := json.Marshal(in.Dashboard)
 	enabled := 0
 	if in.Enabled {
 		enabled = 1
 	}
-	res, err := s.db.Exec(`INSERT INTO instances(name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain,frpc_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), now(), in.ManagePort, in.Remark, in.Domain, in.FrpcVersion)
+	res, err := s.db.Exec(`INSERT INTO instances(name,server_addr,server_port,auth_method,auth_token,enabled,transport,admin,created_at,updated_at,manage_port,remark,domain,frpc_version,dash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), now(), in.ManagePort, in.Remark, in.Domain, in.FrpcVersion, string(dashJSON))
 	if err != nil {
 		return err
 	}
@@ -299,12 +334,13 @@ func (s *Store) CreateInstance(in *model.Instance) error {
 func (s *Store) UpdateInstance(in *model.Instance) error {
 	tb, _ := json.Marshal(in.Transport)
 	ab, _ := json.Marshal(in.AdminCfg)
+	dashJSON, _ := json.Marshal(in.Dashboard)
 	enabled := 0
 	if in.Enabled {
 		enabled = 1
 	}
-	_, err := s.db.Exec(`UPDATE instances SET name=?,server_addr=?,server_port=?,auth_method=?,auth_token=?,enabled=?,transport=?,admin=?,updated_at=?,manage_port=?,remark=?,domain=?,frpc_version=? WHERE id=?`,
-		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), in.ManagePort, in.Remark, in.Domain, in.FrpcVersion, in.ID)
+	_, err := s.db.Exec(`UPDATE instances SET name=?,server_addr=?,server_port=?,auth_method=?,auth_token=?,enabled=?,transport=?,admin=?,updated_at=?,manage_port=?,remark=?,domain=?,frpc_version=?,dash=? WHERE id=?`,
+		in.Name, in.ServerAddr, in.ServerPort, in.AuthMethod, in.AuthToken, enabled, string(tb), string(ab), now(), in.ManagePort, in.Remark, in.Domain, in.FrpcVersion, string(dashJSON), in.ID)
 	return err
 }
 

@@ -84,9 +84,40 @@
           <div class="field-hint">
             frps 管理面板端口，填写后列表「管理」按钮可直达
             <span class="mono">http://服务器地址:管理端口</span>
+            ；再填下面的凭据，代理表单的远程端口「检测」就能拿 frps 的权威端口表判定占用
           </div>
         </el-col>
       </el-row>
+      <el-collapse v-if="(form.manage_port || 0) > 0" class="dash-collapse">
+        <el-collapse-item name="dash">
+          <template #title>
+            <span class="label-with-hint">
+              远端 frps 管理面板凭据（端口检测用）
+              <FieldHint
+                content="对应 frps.toml 里的 webServer.user / webServer.password（旧版 ini 是 dashboard_user / dashboard_pwd），frps 的管理接口只认这一种用户名密码认证；frps 那边没设用户名密码时这里留空即可。配好后，代理表单点「检测」会直接问这台 frps 已登记了哪些远程端口，能报出真实占用者（包括别的客户端建的隧道）；不配则只比对本机其它代理，远端一律「无法确定」。检测结果只作提醒，任何情况都不拦你保存。"
+              />
+            </span>
+          </template>
+          <el-row :gutter="12">
+            <el-col :xs="24" :span="12">
+              <el-form-item label="用户名">
+                <el-input v-model="dash.user" placeholder="webServer.user" autocomplete="off" />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :span="12">
+              <el-form-item label="密码">
+                <el-input
+                  v-model="dash.password"
+                  type="password"
+                  show-password
+                  placeholder="webServer.password"
+                  autocomplete="new-password"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-collapse-item>
+      </el-collapse>
       <el-form-item label="服务器域名 (domain)">
         <el-input
           v-model="form.domain"
@@ -205,22 +236,22 @@
 
         <el-collapse-item name="admin">
           <template #title>
-            <span class="collapse-title"><el-icon><Monitor /></el-icon> Admin API</span>
+            <span class="collapse-title"><el-icon><Monitor /></el-icon> frpc 本机管理接口（Admin API）</span>
           </template>
           <el-alert
             type="info"
             :closable="false"
             show-icon
-            title="启用后可在详情页查看 frps 侧隧道运行状态；端口需在本机唯一"
+            title="frpc 在本机开的管理端口，供本工具读隧道状态，需在本机唯一。远端 frps 面板的用户名密码不在这里填，见上面「FRPS 管理端口」下的凭据区"
             class="admin-tip"
           />
-          <el-form-item label="启用 Admin API">
+          <el-form-item label="启用本机管理接口">
             <el-switch v-model="admin.enabled" />
           </el-form-item>
           <template v-if="admin.enabled">
             <el-row :gutter="12">
               <el-col :xs="24" :span="12">
-                <el-form-item label="端口 (port)" prop="admin_port">
+                <el-form-item label="本机端口 (port)" prop="admin_port">
                   <el-input-number inputmode="numeric"
                     v-model="admin.port"
                     :min="1"
@@ -336,6 +367,9 @@ const admin = reactive({
   password: ''
 })
 
+// frps 管理接口凭据：端口用上面的 manage_port，这里只存认证信息
+const dash = reactive({ user: '', password: '' })
+
 const rules = computed<FormRules>(() => ({
   name: [{ required: true, message: '请输入服务器名称', trigger: 'blur' }],
   server_addr: [{ required: true, message: '请输入服务器地址', trigger: 'blur' }],
@@ -371,9 +405,13 @@ const rules = computed<FormRules>(() => ({
   ],
   admin_port: [
     {
-      validator: (_r: unknown, v: number, cb: (e?: Error) => void) => {
+      // 值在独立的 admin reactive 里，form 上没有 admin_port 这个路径，
+      // Element Plus 传进来的 v 永远是 undefined，必须直接读 admin.port
+      validator: (_r: unknown, _v: unknown, cb: (e?: Error) => void) => {
         if (!admin.enabled) return cb()
-        if (!Number.isInteger(v) || v < 1 || v > 65535) return cb(new Error('端口范围 1-65535'))
+        const p = admin.port
+        if (p === undefined || p === null || Number.isNaN(p)) return cb(new Error('请输入端口'))
+        if (!Number.isInteger(p) || p < 1 || p > 65535) return cb(new Error('端口范围 1-65535'))
         cb()
       },
       trigger: 'blur'
@@ -409,6 +447,9 @@ function onOpen() {
     admin.port = a?.port ?? 17400
     admin.user = a?.user ?? 'admin'
     admin.password = a?.password ?? ''
+    const d = inst.dashboard
+    dash.user = d?.user ?? ''
+    dash.password = d?.password ?? ''
   } else {
     form.name = ''
     form.server_addr = ''
@@ -432,6 +473,8 @@ function onOpen() {
     admin.port = 17400
     admin.user = 'admin'
     admin.password = ''
+    dash.user = ''
+    dash.password = ''
   }
   activeCollapse.value = []
   store.loadFrpcVersions()
@@ -454,7 +497,9 @@ async function onSave() {
       frpc_version: form.frpc_version,
       enabled: form.enabled,
       transport: { ...transport },
-      admin: { ...admin }
+      admin: { ...admin },
+      // 管理端口清掉后凭据区是隐藏的，别把看不见的旧密码继续留在库里
+      dashboard: (form.manage_port || 0) > 0 ? { ...dash } : { user: '', password: '' }
     }
     if (isEdit.value && props.instance) {
       await apiUpdateInstance(props.instance.id, payload)
@@ -476,6 +521,11 @@ async function onSave() {
 <style scoped>
 .full-width {
   width: 100%;
+}
+
+.dash-collapse {
+  margin: 0 0 12px;
+  border-top: none;
 }
 
 .label-with-hint {

@@ -125,15 +125,15 @@
             <el-button :disabled="!localPortValid" @click="copyLocalPort">同本地端口</el-button>
             <el-tooltip
               placement="top"
-              content="查这台服务端是否已占用该端口：先看本机其它代理配置，再对服务端做一次连接探测（udp 无法探测，仅比对本机配置）"
+              content="查这台 frps 是否已占用该端口：先比对本机其它代理配置；该服务器填了「远端 frps 管理面板凭据」时，再向 frps 要它已登记的端口表（含其它客户端建的隧道），udp 同样能查。结果只作提醒，任何情况都不拦保存。"
             >
-              <el-button :loading="checking" @click="checkPort">检测</el-button>
+              <el-button :loading="checking" @click="checkPort()">检测</el-button>
             </el-tooltip>
           </div>
           <el-tag v-if="portCheckView" :type="portCheckView.type" size="small" effect="plain">
             {{ portCheckView.text }}
           </el-tag>
-          <div class="field-tip">frps 侧对外暴露的端口，0 表示随机分配；保存时会自动检测一次</div>
+          <div class="field-tip">frps 侧对外暴露的端口，0 表示随机分配；保存时自动检测一次，结果只作提醒不拦保存（本机已有同端口同协议的启用代理时，保存接口会明确报错）</div>
         </el-form-item>
 
         <!-- http / https：域名 / 子域名 / 路径 / Basic Auth -->
@@ -530,15 +530,16 @@ const portCheckView = computed(() => {
   if (!portCheck.value || checkedKey.value !== portKey()) return null
   if (portCheck.value.state === 'free') return { type: 'success' as const, text: '端口空闲' }
   if (portCheck.value.state === 'occupied') {
-    return { type: 'danger' as const, text: `已被占用：${portCheck.value.holder}` }
+    return { type: 'warning' as const, text: `可能已占用：${portCheck.value.holder}（仅提醒）` }
   }
   return { type: 'info' as const, text: portCheck.value.note || '无法判定' }
 })
 
-async function checkPort(): Promise<CheckPortResult | null> {
+/** quiet=true 供保存前自动检测用：结果只更新输入框下的标签，提醒由 onSave 统一弹一条，避免重复 */
+async function checkPort(quiet = false): Promise<CheckPortResult | null> {
   const port = form.remote_port
   if (!port || port <= 0) {
-    ElMessage.warning('请先填写远程端口')
+    if (!quiet) ElMessage.warning('请先填写远程端口')
     return null
   }
   checking.value = true
@@ -551,9 +552,11 @@ async function checkPort(): Promise<CheckPortResult | null> {
     })
     portCheck.value = res
     checkedKey.value = portKey()
-    if (res.state === 'occupied') ElMessage.error(`远程端口 ${port} 已被占用：${res.holder}`)
-    else if (res.state === 'free') ElMessage.success(`远程端口 ${port} 可用`)
-    else ElMessage.info(res.note || '无法判定端口占用情况')
+    if (!quiet) {
+      if (res.state === 'occupied') ElMessage.warning(`远程端口 ${port} 可能已被占用：${res.holder}（仅提醒，不拦保存）`)
+      else if (res.state === 'free') ElMessage.success(`远程端口 ${port} 可用`)
+      else ElMessage.info(res.note || '无法判定端口占用情况')
+    }
     return res
   } catch {
     return null
@@ -570,12 +573,11 @@ async function onSave() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   if ((form.type === 'tcp' || form.type === 'udp') && (form.remote_port ?? 0) > 0) {
-    // 参数没变就复用刚才手动检测的结果：检测出占用后直接点保存同样要拦
-    const res = checkedKey.value === portKey() ? portCheck.value : await checkPort()
+    // 检测只作提醒：远端判定不可靠（frps 管理接口未必开），不能拿它拦住用户提交。
+    // 真正的本机重复配置由后端保存时校验并给出明确报错。
+    const res = checkedKey.value === portKey() ? portCheck.value : await checkPort(true)
     if (res?.state === 'occupied') {
-      ElMessage.error(`远程端口 ${form.remote_port} 已被占用：${res.holder}，请换一个端口`)
-      formRef.value?.scrollToField('remote_port')
-      return
+      ElMessage.warning(`远程端口 ${form.remote_port} 可能已被占用：${res.holder}，仍会继续保存`)
     }
   }
   saving.value = true

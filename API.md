@@ -51,7 +51,11 @@
   "server_port": 7000,
   "auth_method": "token",          // "token" | "none"
   "auth_token": "xxxx",
-  "manage_port": 7500,              // frps 管理面板端口，选填；前端「管理」按钮据此组装 http://server_addr:manage_port
+  "manage_port": 7500,              // frps 管理面板（dashboard）端口，选填；前端「管理」按钮据此组装 http://server_addr:manage_port，远程端口检测也用它拼管理接口地址
+  "dashboard": {                    // 远端 frps 管理接口凭据，选填；只在远程端口检测时用，不写进 frpc 配置
+    "user": "admin",                // frps 的 webServer.user（旧版 ini: dashboard_user）
+    "password": "xxxx"              // frps 的 webServer.password（旧版 ini: dashboard_pwd）；两者都空=匿名访问
+  },
   "remark": "备注说明",              // 选填，服务器备注
   "domain": "frps.example.com",     // 选填，服务器域名；代理列表远程链接优先用域名，缺省回退 server_addr
   "frpc_version": "0.71.1",         // 选填，本台服务器使用的 frpc 版本；空串=跟随「frpc 版本管理」激活的默认版本
@@ -97,12 +101,14 @@
 ```json
 {
   "state": "free",       // free | occupied | unknown
-  "holder": "",          // occupied 时给出占用方描述：「服务器「xxx」的代理「yyy」」
-  "note": ""             // unknown 时的原因说明（udp 不可探测等）
+  "holder": "",          // occupied 时给出占用方：「服务器「xxx」的代理「yyy」」或「frps 上的代理「zzz」（可能是其它客户端建的隧道）」
+  "note": ""             // unknown 时的原因说明（未配置管理端口/凭据、管理接口不可达或鉴权失败等）
 }
 ```
-  判定顺序：先在**同一台 frps**（`server_addr`+`server_port` 相同）、**同协议**、已启用的代理里查同名远程端口（tcp 与 udp 端口空间互不影响，故只在同协议内比对），命中即 `occupied`；未命中且是 tcp 时再对 `server_addr:remote_port` 做一次 2 秒连接探测——连上即 `occupied`（`exclude_proxy_id` 用于编辑时排除自己：若唯一占用者就是被排除的那条且其实例正在运行，则视为 `free`），连接被拒绝即 `free`，其它网络错误（超时、DNS 失败、frps 不可达）为 `unknown`。udp 从不探测，只比对本机配置，因此无冲突时返回 `unknown`（`note` 说明原因）；非 tcp/udp 类型同样返回 `unknown`。**`unknown` 不阻断保存**，只有 `occupied` 阻断。`instance_id` 不存在、`remote_port` 不在 1-65535 返回 400。
-- 保存（新建/编辑）与启用兜底：`remote_port > 0`、该代理自身启用、且同机同协议存在**已启用**的同端口代理时返回 400（编辑时排除自身，不做网络探测），错误信息为「远程端口 N 已被代理「x」占用」（只点名代理，不含服务器名）；前端「保存并应用」在未手动检测过时会先调一次 check-port，`occupied` 则不发出保存请求
+  判定顺序：① 先在**同一台 frps**（`server_addr`+`server_port` 相同）、**同协议**、已启用的代理里查同远程端口（tcp 与 udp 端口空间互不影响，故只在同协议内比对），命中即 `occupied`；② 未命中时，若该实例填了 `manage_port`，就向 frps 自己的管理接口要权威端口表——`GET http://server_addr:manage_port/api/proxy/{tcp|udp}`（3 秒超时，用 `dashboard.user`/`password` 走 HTTP Basic，两者都空则匿名），响应取 `{"proxies":[...]}`（也兼容裸数组）里每条代理的 `conf.remotePort` 汇成占用表。表里有这个端口即 `occupied` 并点名 frps 上的代理名，没有即 `free`；`exclude_proxy_id` 用于编辑时排除自己（该端口在 frps 上的登记名与本机被排除的那条代理同名时视为 `free`）。③ 拿不到权威答案就一律 `unknown` 并在 `note` 说明原因：没填 `manage_port`、没填凭据导致 401/403、管理接口连不上或超时、返回内容解析失败；非 tcp/udp 类型同样 `unknown`。**本接口三种结果都只作提醒，前端不拿任何一种拦保存**；真正会拒绝保存的只有下面那条本机重复配置校验。`instance_id` 不存在、`remote_port` 不在 1-65535 返回 400。
+
+  1.2.1 起不再做「连得上 `server_addr:remote_port` 就算占用」的 TCP 探测：容器网络（OrbStack/Docker Desktop 一类）会替任意地址完成握手，空闲端口也被判成占用；frps 的 `/api/ports` 在新版本已移除，端口表只能从 `/api/proxy/{type}` 推。
+- 保存（新建/编辑）与启用兜底：`remote_port > 0`、该代理自身启用、且同机同协议存在**已启用**的同端口代理时返回 400（编辑时排除自身，不做网络探测），错误信息为「远程端口 N 已被代理「x」占用」（只点名代理，不含服务器名）；前端「保存并应用」在未手动检测过时会先调一次 check-port，但结果只弹提醒（`occupied` 弹黄色警告），**照常发出保存请求**
 
 ### proxy 对象
 ```json

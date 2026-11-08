@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 
 	"frpc-mesh/internal/model"
@@ -174,18 +175,49 @@ func TestCheckPortParamValidation(t *testing.T) {
 	}
 }
 
+// setDash 给实例配置 frps 管理接口：端口写进 manage_port，凭据写进 dashboard
+func setDash(t *testing.T, st *store.Store, id int64, port int, user, pwd string) {
+	t.Helper()
+	in, err := st.GetInstance(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.ManagePort = port
+	in.Dashboard = model.DashAuth{User: user, Password: pwd}
+	if err := st.UpdateInstance(in); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func dashPort(t *testing.T, rawURL string) int {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return port
+}
+
 func TestCheckPortOccupiedByOtherProxy(t *testing.T) {
-	s, st, _, h := newTestServer(t)
-	a := mustInstance(t, st, "服务器A", "127.0.0.9", 7000, "")
-	b := mustInstance(t, st, "服务器B", "127.0.0.9", 7000, "") // 同一 FRPS 服务器
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "服务器A", "127.0.0.1", 7000, "")
+	b := mustInstance(t, st, "服务器B", "127.0.0.1", 7000, "") // 同一 FRPS 服务器
 	c := mustInstance(t, st, "服务器C", "127.0.0.8", 7000, "") // 另一台 FRPS
 	mustProxy(t, st, b.ID, "备份口", "tcp", 8080, true)
 	mustProxy(t, st, c.ID, "别的FRPS", "tcp", 8080, true)
 	mustProxy(t, st, a.ID, "禁用", "tcp", 8080, false) // 禁用不算占用
-	s.probeTCP = func(string) error {
-		t.Error("本机查重命中时不应发起网络探测")
-		return nil
-	}
+	// 本机查重是硬结论，配了管理端口也不该再去问远端
+	asked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = true
+		fmt.Fprint(w, `{"proxies":[]}`)
+	}))
+	defer srv.Close()
+	setDash(t, st, a.ID, dashPort(t, srv.URL), "", "")
 
 	code, m := checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID))
 	if code != 200 || m["state"] != "occupied" {
@@ -194,106 +226,144 @@ func TestCheckPortOccupiedByOtherProxy(t *testing.T) {
 	if !strings.Contains(m["holder"], "服务器「服务器B」") || !strings.Contains(m["holder"], "代理「备份口」") {
 		t.Errorf("holder 应写明服务器与代理名，实际 %q", m["holder"])
 	}
-	// 禁用代理不算占用：换 8081 只有禁用行不命中，注入拒绝探测 → free
+	if asked {
+		t.Error("本机查重命中时不该再请求 frps 管理接口")
+	}
+	// 禁用代理不算占用，且 frps 表里也没有 → free
 	mustProxy(t, st, a.ID, "禁用2", "tcp", 8081, false)
-	s.probeTCP = func(string) error { return syscall.ECONNREFUSED }
 	_, m = checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8081}`, a.ID))
 	if m["state"] != "free" {
-		t.Errorf("禁用代理不算冲突，实际 %v", m)
+		t.Errorf("禁用行与 frps 空表应 free，实际 %v", m)
 	}
 }
 
-func TestCheckPortTCPProbeStates(t *testing.T) {
-	s, st, _, h := newTestServer(t)
+// 没配 frps 管理端口时只能说「无法确定」：早先这里靠 TCP 能不能连上推断，
+// 而容器/公司网络的透明代理会替任意端口完成握手，把空闲端口报成占用并拦住保存
+func TestCheckPortWithoutDashIsUnknown(t *testing.T) {
+	_, st, _, h := newTestServer(t)
 	a := mustInstance(t, st, "A", "127.0.0.9", 7000, "")
-	req := fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID)
-
-	// 拒绝 → free，且探测地址为 server_addr:remote_port
-	s.probeTCP = func(addr string) error {
-		if want := "127.0.0.9:8080"; addr != want {
-			t.Errorf("探测地址应为 %q，实际 %q", want, addr)
-		}
-		return syscall.ECONNREFUSED
-	}
-	code, m := checkPort(t, h, req)
-	if code != 200 || m["state"] != "free" {
-		t.Errorf("连接被拒绝应 free，实际 code=%d %v", code, m)
-	}
-
-	// 连上且本机无持有者 → occupied（服务端已有监听）
-	s.probeTCP = func(string) error { return nil }
-	_, m = checkPort(t, h, req)
-	if m["state"] != "occupied" || m["holder"] != "服务端已有监听（非本机配置）" {
-		t.Errorf("探测连上应 occupied 非本机配置，实际 %v", m)
-	}
-
-	// 超时/其它错误 → unknown + note，不阻断保存
-	s.probeTCP = func(string) error { return os.ErrDeadlineExceeded }
-	_, m = checkPort(t, h, req)
-	if m["state"] != "unknown" || !strings.Contains(m["note"], "未阻断保存") {
-		t.Errorf("探测超时应 unknown 并说明不阻断，实际 %v", m)
+	_, m := checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID))
+	if m["state"] != "unknown" || !strings.Contains(m["note"], "无法确定") || !strings.Contains(m["note"], "不阻断") {
+		t.Errorf("未配置管理端口应 unknown 且说明不阻断，实际 %v", m)
 	}
 }
 
-func TestCheckPortSelfExclusion(t *testing.T) {
-	s, st, mgr, h := newTestServer(t)
-	a := mustInstance(t, st, "A", "127.0.0.9", 7000, "9.9.9")
-	writeSleepFrpc(t, mgr, "9.9.9")
-	px := mustProxy(t, st, a.ID, "自身", "tcp", 8080, true)
-	s.probeTCP = func(string) error { return nil } // 总能连上
+func TestCheckPortViaFrpsAPI(t *testing.T) {
+	var gotAuth, gotPath string
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.1", 7000, "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotUser, gotPwd, isBasic := r.BasicAuth()
+		gotAuth = fmt.Sprintf("%s basic=%v %s", gotUser, isBasic, gotPwd)
+		fmt.Fprint(w, `{"proxies":[{"name":"别人建的隧道","conf":{"remotePort":8080}},{"name":"随机端口","conf":{"remotePort":0}}]}`)
+	}))
+	defer srv.Close()
+	setDash(t, st, a.ID, dashPort(t, srv.URL), "dash", "pw")
 
-	// 不排除自身 → 查重直接 occupied
-	req := fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID)
-	_, m := checkPort(t, h, req)
-	if m["state"] != "occupied" {
-		t.Fatalf("未排除自身应 occupied，实际 %v", m)
+	_, m := checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID))
+	if m["state"] != "occupied" || !strings.Contains(m["holder"], "别人建的隧道") {
+		t.Errorf("frps 表里有这条应 occupied 并写出代理名，实际 %v", m)
 	}
-
-	// 排除自身且其实例正在运行（占用可解释）→ free
-	if err := mgr.Start(a); err != nil {
-		t.Fatalf("Start 失败: %v", err)
+	if gotPath != "/api/proxy/tcp" {
+		t.Errorf("应查 /api/proxy/tcp，实际 %q", gotPath)
 	}
-	excl := fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080,"exclude_proxy_id":%d}`, a.ID, px.ID)
-	_, m = checkPort(t, h, excl)
+	if gotAuth != "dash basic=true pw" {
+		t.Errorf("应带 dashboard Basic 凭据，实际 %q", gotAuth)
+	}
+	// 表里没有 → free；remotePort=0（随机分配）不参与判定
+	_, m = checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8081}`, a.ID))
 	if m["state"] != "free" {
-		t.Errorf("排除运行中的自身应 free，实际 %v", m)
+		t.Errorf("frps 表里没有应 free，实际 %v", m)
+	}
+	code, bad := checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":0}`, a.ID))
+	if code != 400 || bad["state"] != "" {
+		t.Errorf("remote_port=0 属参数非法应 400，实际 code=%d %v", code, bad)
+	}
+}
+
+func TestDashBaseBracketsIPv6(t *testing.T) {
+	if got := dashBase(&model.Instance{ServerAddr: "2001:db8::1", ManagePort: 7500}); got != "http://[2001:db8::1]:7500" {
+		t.Errorf("IPv6 地址要补方括号，实际 %q", got)
+	}
+	if got := dashBase(&model.Instance{ServerAddr: "frps.example.com", ManagePort: 7500}); got != "http://frps.example.com:7500" {
+		t.Errorf("域名地址拼错：%q", got)
+	}
+}
+
+// 编辑自己的代理：frps 表里那条同名代理不算冲突
+func TestCheckPortFrpsAPIExcludesSelf(t *testing.T) {
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.1", 7000, "")
+	px := mustProxy(t, st, a.ID, "我自己的", "tcp", 8080, true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"proxies":[{"name":"我自己的","conf":{"remotePort":8080}}]}`)
+	}))
+	defer srv.Close()
+	setDash(t, st, a.ID, dashPort(t, srv.URL), "", "")
+
+	excl := fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080,"exclude_proxy_id":%d}`, a.ID, px.ID)
+	_, m := checkPort(t, h, excl)
+	if m["state"] != "free" {
+		t.Errorf("排除自身（同名）应 free，实际 %v", m)
+	}
+	// 同名但没排除 → 仍按占用提示，避免把「本机没登记但远端已有」的端口直接放行
+	_, m = checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID))
+	if m["state"] != "occupied" {
+		t.Errorf("未排除自身应 occupied，实际 %v", m)
+	}
+}
+
+func TestCheckPortFrpsAPIFailureIsUnknown(t *testing.T) {
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.1", 7000, "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	setDash(t, st, a.ID, dashPort(t, srv.URL), "dash", "错密码")
+
+	_, m := checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID))
+	if m["state"] != "unknown" || !strings.Contains(m["note"], "鉴权失败") || !strings.Contains(m["note"], "不阻断") {
+		t.Errorf("frps 鉴权失败应 unknown 并带上原因与不阻断说明，实际 %v", m)
 	}
 
-	// 实例停止后再“连上”说明不是本机配置 → occupied
-	if err := mgr.Stop(a.ID); err != nil {
-		t.Fatal(err)
-	}
-	_, m = checkPort(t, h, excl)
-	if m["state"] != "occupied" || m["holder"] != "服务端已有监听（非本机配置）" {
-		t.Errorf("自身未运行时连上应 occupied 非本机配置，实际 %v", m)
+	// 管理端口没人应答（服务已关）同样只提示不拦
+	srv.Close()
+	_, m = checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":8080}`, a.ID))
+	if m["state"] != "unknown" {
+		t.Errorf("远端不可达应 unknown，实际 %v", m)
 	}
 }
 
 func TestCheckPortUDP(t *testing.T) {
-	s, st, _, h := newTestServer(t)
-	a := mustInstance(t, st, "A", "127.0.0.9", 7000, "")
+	_, st, _, h := newTestServer(t)
+	a := mustInstance(t, st, "A", "127.0.0.1", 7000, "")
 	mustProxy(t, st, a.ID, "dns", "udp", 53, true)
-	probed := false
-	s.probeTCP = func(string) error { probed = true; return nil }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/proxy/udp" {
+			fmt.Fprint(w, `{"proxies":[{"name":"dns","conf":{"remotePort":5353}}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"proxies":[]}`)
+	}))
+	defer srv.Close()
+	setDash(t, st, a.ID, dashPort(t, srv.URL), "", "")
 
-	// udp 查重命中 → occupied
+	// udp 本机查重命中 → occupied
 	_, m := checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"udp","remote_port":53}`, a.ID))
 	if m["state"] != "occupied" || !strings.Contains(m["holder"], "dns") {
 		t.Fatalf("udp 查重命中应 occupied，实际 %v", m)
 	}
-	// udp 未命中 → unknown 并说明限制，不发起探测
+	// udp 也能问 frps：表里有 → occupied（写名）
 	_, m = checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"udp","remote_port":5353}`, a.ID))
-	if m["state"] != "unknown" || !strings.Contains(m["note"], "udp") {
-		t.Errorf("udp 未命中应 unknown 并说明限制，实际 %v", m)
+	if m["state"] != "occupied" || !strings.Contains(m["holder"], "dns") {
+		t.Errorf("udp 应能拿 frps 表判定，实际 %v", m)
 	}
-	// tcp 请求不受 udp 代理影响（协议不同不互斥）
-	s.probeTCP = func(string) error { return syscall.ECONNREFUSED }
+	// tcp 请求不受 udp 代理影响（协议不同不互斥），且查的是 tcp 表 → free
 	_, m = checkPort(t, h, fmt.Sprintf(`{"instance_id":%d,"type":"tcp","remote_port":53}`, a.ID))
 	if m["state"] != "free" {
 		t.Errorf("tcp/udp 不应互相判占用，实际 %v", m)
-	}
-	if probed {
-		t.Error("udp 请求不应发起 TCP 探测")
 	}
 }
 

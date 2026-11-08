@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"frpc-mesh/internal/auth"
+	"frpc-mesh/internal/frpsapi"
 	"frpc-mesh/internal/model"
 	"frpc-mesh/internal/netinfo"
 	"frpc-mesh/internal/runner"
@@ -31,8 +31,6 @@ type Server struct {
 	Upgrade *update.Upgrader
 	Version string
 	WebFS   fs.FS // 前端静态资源根（已含 index.html）
-	// probeTCP 端口探测注入点，默认 net.DialTimeout；单测替换以隔离真实网络
-	probeTCP func(addr string) error
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -813,7 +811,7 @@ type checkPortRequest struct {
 }
 
 type checkPortResponse struct {
-	State  string `json:"state"`  // free | occupied | unknown；unknown 永不阻断保存
+	State  string `json:"state"`  // free | occupied | unknown；三种结果都只作提醒，前端不拿它拦保存
 	Holder string `json:"holder"` // occupied 时的占用者描述
 	Note   string `json:"note"`   // unknown 时的限制说明
 }
@@ -850,18 +848,22 @@ func (s *Server) findRemotePortHolders(in *model.Instance, typ string, remotePor
 	return out, nil
 }
 
-func (s *Server) dialRemotePort(addr string) error {
-	if s.probeTCP != nil {
-		return s.probeTCP(addr)
-	}
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-	if err != nil {
-		return err
-	}
-	return conn.Close()
+// dashBase 组装 frps 管理接口地址（端口就是实例的 manage_port）；
+// 地址可能是 IPv6 字面量，必须走 JoinHostPort 补方括号，否则 URL 解析直接失败
+func dashBase(in *model.Instance) string {
+	return "http://" + net.JoinHostPort(in.ServerAddr, strconv.Itoa(in.ManagePort))
 }
 
-// handleCheckPort 检测远程端口占用，口径见设计 §3.1：先本机跨服务器查重，tcp 再探测服务端
+// handleCheckPort 远程端口占用检测。口径：
+//  1. 本机跨服务器查重——这是能证明的冲突，判 occupied；
+//  2. 远端只认 frps 管理接口（dashboard）给的权威端口表；
+//  3. 拿不到权威答案一律 unknown。
+//
+// 三种结果都只是提醒：远端判定依赖对方是否开了管理接口，不可靠，不能拿它当保存门禁。
+// 真正确定的重复配置由 remotePortConflict 在保存/启用时返回 400。
+//
+// 这里早先靠「能不能 TCP 连上」推断远端占用，但容器与企业网络的透明代理会替任意端口完成握手
+// （实测容器内拨 8.8.8.8:18999 也返回连接成功），空闲端口会被报成「服务端已有监听」并拦住保存，故废弃。
 func (s *Server) handleCheckPort(w http.ResponseWriter, r *http.Request) {
 	var req checkPortRequest
 	if err := readJSON(r, &req); err != nil {
@@ -886,7 +888,6 @@ func (s *Server) handleCheckPort(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	// 1. 本机查重（排除当前编辑中的代理）
 	for _, h := range holders {
 		if h.ProxyID != req.ExcludeProxyID {
 			writeJSON(w, 200, checkPortResponse{State: "occupied",
@@ -894,30 +895,34 @@ func (s *Server) handleCheckPort(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// 2. udp 无法从本机探测，查重未命中即明示限制
-	if req.Type == "udp" {
+	localOK := "本机其它代理未占用该端口；"
+	if in.ManagePort <= 0 {
 		writeJSON(w, 200, checkPortResponse{State: "unknown",
-			Note: "udp 端口无法从本机探测，仅确认本机其它代理未占用"})
+			Note: localOK + "未配置该服务器的 frps 管理端口，远端是否被其它客户端占用无法确定（不阻断保存）"})
 		return
 	}
-	// 3. tcp 探测服务端
-	err = s.dialRemotePort(net.JoinHostPort(in.ServerAddr, strconv.Itoa(req.RemotePort)))
-	if err != nil && !errors.Is(err, syscall.ECONNREFUSED) {
-		// 超时/DNS 失败等一律 unknown，不阻断保存（可能被安全组静默丢弃）
+	ports, err := frpsapi.UsedPorts(r.Context(), dashBase(in),
+		frpsapi.Auth{User: in.Dashboard.User, Password: in.Dashboard.Password}, req.Type)
+	if err != nil {
 		writeJSON(w, 200, checkPortResponse{State: "unknown",
-			Note: "连接超时：可能被安全组静默丢弃或服务不可达；未阻断保存"})
+			Note: localOK + "查询 frps 管理端口失败：" + err.Error() + "（不阻断保存）"})
 		return
 	}
-	if err != nil { // 明确拒绝 → 空闲
+	name, used := ports[req.RemotePort]
+	if !used {
 		writeJSON(w, 200, checkPortResponse{State: "free"})
 		return
 	}
-	// 连得上：唯一持有者是“被排除的自身”且其实例在运行，才能解释为本机占用；否则视为服务端已有监听
-	if len(holders) == 1 && holders[0].ProxyID == req.ExcludeProxyID && s.Mgr.IsRunning(holders[0].InstanceID) {
-		writeJSON(w, 200, checkPortResponse{State: "free"})
-		return
+	// 编辑场景：frps 上这条就是本机正在跑的自身，不算冲突。
+	// holders 已带同 frps/同协议/同端口的本机代理（含被排除的那条），直接比对，不再查一次库
+	for _, h := range holders {
+		if h.ProxyID == req.ExcludeProxyID && h.ProxyName == name {
+			writeJSON(w, 200, checkPortResponse{State: "free"})
+			return
+		}
 	}
-	writeJSON(w, 200, checkPortResponse{State: "occupied", Holder: "服务端已有监听（非本机配置）"})
+	writeJSON(w, 200, checkPortResponse{State: "occupied",
+		Holder: fmt.Sprintf("frps 上的代理「%s」（可能是其它客户端建的隧道）", name)})
 }
 
 // ---------- settings ----------

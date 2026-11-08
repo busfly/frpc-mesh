@@ -19,6 +19,12 @@ export interface AdminApi {
   password: string
 }
 
+/** 远端 frps 管理接口（webServer）的凭据；端口用 Instance.manage_port。frps 只认 Basic，两者留空即匿名 */
+export interface DashboardAuth {
+  user: string
+  password: string
+}
+
 export interface InstanceRuntime {
   status: string
   pid: number
@@ -44,6 +50,8 @@ export interface Instance {
   enabled: boolean
   transport?: Transport | null
   admin?: AdminApi | null
+  /** frps 管理接口凭据（配合 manage_port 使用），用于远程端口占用的权威校验 */
+  dashboard?: DashboardAuth | null
   created_at?: string
   updated_at?: string
   runtime?: InstanceRuntime | null
@@ -84,7 +92,7 @@ export interface ProxyPingResult {
   latency_ms: number
 }
 
-/** 远程端口占用检测：unknown 表示探测不通/udp 无法探测，不阻断保存 */
+/** 远程端口占用检测：三种结果都只作提醒，不拦保存；确定的本机重复由保存接口 400 拒绝 */
 export interface CheckPortResult {
   state: 'free' | 'occupied' | 'unknown'
   holder: string
