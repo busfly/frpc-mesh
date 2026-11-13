@@ -58,6 +58,32 @@ func TestInstanceFrpcVersionMigration(t *testing.T) {
 	st2.Close()
 }
 
+func TestInstanceDashboardRoundTrip(t *testing.T) {
+	st := openTemp(t)
+	in := &model.Instance{
+		Name: "s1", ServerAddr: "1.1.1.1", ServerPort: 7000, ManagePort: 7500,
+		Dashboard: model.DashAuth{User: "admin", Password: "pw"},
+	}
+	if err := st.CreateInstance(in); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetInstance(in.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Dashboard != in.Dashboard || got.ManagePort != 7500 {
+		t.Fatalf("凭据读回不一致：%+v", got.Dashboard)
+	}
+	got.Dashboard = model.DashAuth{}
+	if err := st.UpdateInstance(got); err != nil {
+		t.Fatal(err)
+	}
+	got2, _ := st.GetInstance(in.ID)
+	if got2.Dashboard != (model.DashAuth{}) {
+		t.Fatalf("清空凭据后读回 %+v", got2.Dashboard)
+	}
+}
+
 func TestInstanceFrpcVersionRoundTrip(t *testing.T) {
 	st := openTemp(t)
 	in := &model.Instance{Name: "s1", ServerAddr: "1.1.1.1", ServerPort: 7000, FrpcVersion: "0.70.0"}

@@ -21,7 +21,7 @@ function check(name, ok, detail = '') {
 
 // 演示数据：全部假地址，不含用户真实配置
 const SEED = [
-  { name: 'demo-a', addr: '127.0.0.1', port: 7600, domain: 'frps-a.example.com', proxies: [
+  { name: 'demo-a', addr: '127.0.0.1', port: 7600, domain: 'frps-a.example.com', manage: 7500, proxies: [
       { name: 'demo-ssh', type: 'tcp', local_ip: '127.0.0.1', local_port: 22, remote_port: 22001 },
       { name: 'demo-web', type: 'http', local_ip: '127.0.0.1', local_port: 8080, custom_domains: 'web.example.com' },
       { name: 'demo-off', type: 'udp', local_ip: '127.0.0.1', local_port: 53, remote_port: 5353, enabled: false },
@@ -47,6 +47,21 @@ async function loginOnce() {
   })
 }
 
+/** 按名字删掉验收自己建的代理（UI 删除流程另有断言，这里只是清场） */
+async function apiDeleteProxy(name) {
+  const login = await loginOnce()
+  if (!login.ok) return
+  const { token } = await login.json()
+  const auth = { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+  const instances = await (await fetch(`${BASE}/api/instances`, auth)).json()
+  for (const inst of instances) {
+    const proxies = await (await fetch(`${BASE}/api/instances/${inst.id}/proxies`, auth)).json()
+    for (const proxy of (proxies || []).filter((x) => x.name === name)) {
+      await fetch(`${BASE}/api/proxies/${proxy.id}`, { ...auth, method: 'DELETE' })
+    }
+  }
+}
+
 async function seed() {
   // 容器刚起时端口可能还没就绪（OrbStack 挂载新目录也偶发慢几秒），先探通再灌数据
   let login
@@ -61,14 +76,10 @@ async function seed() {
   if (!login.ok) throw new Error(`登录失败 ${login.status}`)
   const { token } = await login.json()
   const auth = { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-  // 上一轮中断会留下 cdp-mobile-prox，卡片数就对不上；按名字清干净，保证每轮起点一致
+  // 上一轮中断会留下验收自己建的代理，卡片数就对不上；按名字清干净，保证每轮起点一致
+  await apiDeleteProxy('cdp-mobile-prox')
+  await apiDeleteProxy('cdp-occupied-ok')
   const instances = await (await fetch(`${BASE}/api/instances`, auth)).json()
-  for (const inst of instances) {
-    const proxies = await (await fetch(`${BASE}/api/instances/${inst.id}/proxies`, auth)).json()
-    for (const proxy of (proxies || []).filter((x) => x.name === 'cdp-mobile-prox')) {
-      await fetch(`${BASE}/api/proxies/${proxy.id}`, { ...auth, method: 'DELETE' })
-    }
-  }
   // 逐个实例补齐：缺实例建实例，缺代理建代理（删除断言会真的删掉一条，不能只灌一次）
   for (const inst of SEED) {
     let target = instances.find((i) => i.name === inst.name)
@@ -90,6 +101,13 @@ async function seed() {
         })
       ).json()
       instances.push(target)
+    }
+    // 管理端口要够：v1.2.1 的「frps 管理接口凭据」折叠区只在 manage_port>0 时出现
+    if ((target.manage_port || 0) !== (inst.manage || 0)) {
+      const cur = await (await fetch(`${BASE}/api/instances/${target.id}`, auth)).json()
+      cur.manage_port = inst.manage || 0
+      target = await (await fetch(`${BASE}/api/instances/${target.id}`, { ...auth, method: 'PUT', body: JSON.stringify(cur) })).json()
+        .catch(() => target)
     }
     const have = (await (await fetch(`${BASE}/api/instances/${target.id}/proxies`, auth)).json()).map((x) => x.name)
     for (const proxy of inst.proxies) {
@@ -132,9 +150,11 @@ async function connect() {
 function session(ws) {
   let id = 0
   const pend = new Map()
+  const handlers = new Map()
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data)
     if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id) }
+    else if (m.method && handlers.has(m.method)) handlers.get(m.method)(m.params)
   }
   const raw = (method, params = {}) =>
     new Promise((res) => { const n = ++id; pend.set(n, res); ws.send(JSON.stringify({ id: n, method, params })) })
@@ -159,7 +179,7 @@ function session(ws) {
     const p = await cmd('Page.captureScreenshot', { format: 'png' })
     await fs.writeFile(`${OUT}/${name}`, Buffer.from(p.data, 'base64'))
   }
-  return { cmd, js, wait, setViewport, shot }
+  return { cmd, js, wait, setViewport, shot, on: (method, fn) => handlers.set(method, fn) }
 }
 
 /** 真实鼠标/触摸点击（CDP 输入事件才有用户激活） */
@@ -501,6 +521,89 @@ async function run() {
       `!!([...document.querySelectorAll('.el-popover')].some((p) => p.innerText.includes('默认版本')))`
     ), '浮层里没有说明文字')
 
+    // 「frps 管理接口凭据」折叠区（v1.2.1 新增）：展开后照样不能横向溢出，输入框仍走 44/16 档
+    // 折叠头右侧就是问号，按坐标点容易误触浮层，这里直接点标题元素。
+    // 收起状态的 wrap 是 display:none，里面的输入框量出来恒为 0，所以只量「真的看得见」的那些，
+    // 否则同表单里没展开的 transport / Admin API 会被算成 8 个矮输入框，断言永远红。
+    const openDash = `[...document.querySelectorAll('.fm-form')].filter((n) => n.getBoundingClientRect().height > 0)` +
+      `.some((f) => [...f.querySelectorAll('.dash-collapse .el-collapse-item')].some((i) =>` +
+      ` i.classList.contains('is-active') && i.querySelector('.el-collapse-item__wrap').getBoundingClientRect().height > 0))`
+    // 上一步的问号浮层还开着：合成 click 没有用户激活，第一次点会被浮层的「点外面关闭」吃掉，
+    // 真手指点同样如此，所以这里按未展开就再点一次（不是无脑点两次，避免展开又被点回去）
+    for (let i = 0; i < 3 && !(await S.js(`!!(${openDash})`)); i++) {
+      await S.js(`(() => {
+        const sheet = [...document.querySelectorAll('.fm-form')].find((n) => n.getBoundingClientRect().height > 0);
+        const h = sheet.querySelector('.dash-collapse .el-collapse-item__header');
+        h.scrollIntoView({ block: 'center' }); h.click();
+      })()`)
+      await new Promise((r) => setTimeout(r, 600))
+    }
+    await S.wait(openDash, '管理凭据折叠区展开')
+    const dashOK = await S.js(`(() => {
+      const sheet = [...document.querySelectorAll('.fm-form')].find((n) => n.getBoundingClientRect().height > 0);
+      const body = sheet.querySelector('.el-drawer__body');
+      const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 };
+      const wraps = [...sheet.querySelectorAll('.el-input__wrapper')].filter(shown);
+      return {
+        opened: [...sheet.querySelectorAll('.dash-collapse .el-collapse-item__wrap')].some((w) => w.getBoundingClientRect().height > 0),
+        pwdField: [...sheet.querySelectorAll('.dash-collapse input')].some((i) => /webServer\.password/.test(i.placeholder || '')),
+        wraps: wraps.length,
+        short: wraps.filter((w) => Math.round(w.getBoundingClientRect().height) < 44).length,
+        tiny: [...sheet.querySelectorAll('.el-input__inner')].filter(shown).filter((i) => parseFloat(getComputedStyle(i).fontSize) < 16).length,
+        spill: [...sheet.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > window.innerWidth + 1 }).length,
+        sw: body ? body.scrollWidth : 0, cw: body ? body.clientWidth : 0
+      };
+    })()`)
+    check(
+      '[移动] 管理凭据折叠区可展开且不溢出、输入达标',
+      dashOK.opened && dashOK.pwdField && dashOK.wraps > 0 && dashOK.short === 0 && dashOK.tiny === 0 && dashOK.spill === 0 && dashOK.sw <= dashOK.cw + 1,
+      JSON.stringify(dashOK)
+    )
+
+    // 回归（1.2.1）：本机管理接口的端口校验曾读错字段（值不在表单模型上），
+    // 填任何合法端口都报「端口范围 1-65535」、启用后根本保存不了。这里启用+填合法端口+保存，必须真的存进去
+    const adminItem = `(function () {
+      const sheet = [...document.querySelectorAll('.fm-form')].find((n) => n.getBoundingClientRect().height > 0);
+      if (!sheet) return null;
+      return [...sheet.querySelectorAll('.form-collapse .el-collapse-item')].find((i) =>
+        (i.querySelector('.el-collapse-item__header') || {}).innerText?.includes('frpc 本机管理接口')) || null;
+    })()`
+    const openAdmin = `!!(${adminItem}) && (${adminItem}).classList.contains('is-active')`
+    for (let i = 0; i < 3 && !(await S.js(openAdmin)); i++) {
+      await S.js(`(() => { const h = (${adminItem}).querySelector('.el-collapse-item__header');
+        h.scrollIntoView({ block: 'center' }); h.click() })()`)
+      await new Promise((r) => setTimeout(r, 600))
+    }
+    await S.wait(openAdmin, '本机管理接口折叠区展开')
+    await S.js(`(() => { const sw = (${adminItem}).querySelector('.el-switch');
+      if (!sw.classList.contains('is-checked')) sw.click() })()`)
+    await new Promise((r) => setTimeout(r, 400))
+    await S.js(`(() => {
+      const set = (el, v) => {
+        const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')
+        d.set.call(el, v)
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+        el.dispatchEvent(new Event('blur'))
+      }
+      const fi = [...(${adminItem}).querySelectorAll('.el-form-item')].find((x) =>
+        (x.querySelector('.el-form-item__label') || {}).innerText?.includes('本机端口'))
+      set(fi.querySelector('.el-input__inner'), '17400')
+    })()`)
+    await new Promise((r) => setTimeout(r, 400))
+    await tapText(S, '保存修改', `[...document.querySelectorAll('.fm-form')].find((n) => n.getBoundingClientRect().height > 0)`)
+    await new Promise((r) => setTimeout(r, 1200))
+    const adminUI = await S.js(`(() => ({
+      closed: ![...document.querySelectorAll('.fm-form')].some((n) => n.getBoundingClientRect().height > 0),
+      rangeErr: /端口范围 1-65535/.test(document.body.innerText)
+    }))()`)
+    const tok = (await (await loginOnce()).json()).token
+    const demoA = (await (await fetch(`${BASE}/api/instances`, { headers: { Authorization: `Bearer ${tok}` } })).json())
+      .find((i) => i.name === 'demo-a')
+    const adminOK = !!demoA?.admin?.enabled && demoA.admin.port === 17400
+    check('[移动] 本机管理接口合法端口能保存（校验读对字段）',
+      adminUI.closed && !adminUI.rangeErr && adminOK, JSON.stringify({ ...adminUI, adminOK, admin: demoA?.admin }))
+
     // chip 条「吸顶」：EP 的 .el-card 带 overflow:hidden，sticky 的参照会变成那个永不滚动的盒子，
     // 宣称的吸顶其实从未生效 —— 滚一段再量，必须还贴在可视区顶部
     await S.cmd('Page.navigate', { url: `${BASE}/proxies` })
@@ -631,6 +734,61 @@ async function run() {
     check('[移动] 确认后卡片减少', await S.js(
       `document.querySelectorAll('.fm-cards .fm-card').length === ${before}`
     ), `回到 ${before} 条`)
+
+    // 回归（1.2.1）：检测报 occupied 也只提醒，照样能保存。
+    // 用 CDP Fetch 把 check-port 的响应换成 occupied，走的是真实 onSave 代码路径
+    let injected = 0
+    await S.cmd('Fetch.enable', { patterns: [{ urlPattern: '*/api/proxies/check-port', requestStage: 'Request' }] })
+    S.on('Fetch.requestPaused', (p) => {
+      injected++
+      S.cmd('Fetch.fulfillRequest', {
+        requestId: p.requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+        body: Buffer.from(JSON.stringify({
+          state: 'occupied', holder: '验收注入：frps 上的代理「someone-else」', note: ''
+        })).toString('base64')
+      }).catch(() => {})
+    })
+    try {
+      // 提示条 3 秒就消失，用 MutationObserver 把出现过的文案都记下来再断言
+      await S.js(`(() => { window.__msgs = [];
+        new MutationObserver(() => { for (const m of document.querySelectorAll('.el-message')) {
+          const t = m.innerText; if (t && !window.__msgs.includes(t)) window.__msgs.push(t) } })
+          .observe(document.body, { childList: true, subtree: true }) })()`)
+      await tapAt(S, '.fm-type-chips .fm-chip')
+      await S.wait('document.querySelector(".fm-form")', 'create form for occupied case')
+      await new Promise((r) => setTimeout(r, 600))
+      await S.js(`(() => {
+        const set = (el, v) => {
+          const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')
+          d.set.call(el, v)
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+        }
+        const labelOf = (it) => { const l = it.querySelector('.el-form-item__label'); return l ? l.innerText : '' }
+        const items = [...document.querySelectorAll('.fm-form .el-form-item')]
+        for (const [re, val] of [[/代理名称/, 'cdp-occupied-ok'], [/本地端口/, '8088'], [/远程端口/, '22097']]) {
+          const it = items.find((x) => re.test(labelOf(x)))
+          const input = it && it.querySelector('.el-input__inner')
+          if (input) set(input, val)
+        }
+      })()`)
+      await tapText(S, '并应用', `document.querySelector('.fm-form')`)
+      await S.wait(`!document.querySelector('.fm-form') || document.querySelector('.fm-form').getBoundingClientRect().height === 0`, 'form closed despite occupied')
+      await new Promise((r) => setTimeout(r, 900))
+      const occ = await S.js(`(() => ({
+        saved: [...document.querySelectorAll('.fm-cards .fm-card')].some((c) => c.innerText.includes('cdp-occupied-ok')),
+        warned: (window.__msgs || []).some((t) => /仍会继续保存/.test(t)),
+        msgs: window.__msgs || []
+      }))()`)
+      check('[移动] 检测报占用只提醒、不拦保存', injected > 0 && occ.saved && occ.warned,
+        `注入 ${injected} 次，保存成功=${occ.saved}，提醒=${occ.warned}，消息=${JSON.stringify(occ.msgs)}`)
+    } finally {
+      await S.cmd('Fetch.disable')
+    }
+    // 这条是验收自己建的，走后端删掉，别污染后面的卡片计数
+    await apiDeleteProxy('cdp-occupied-ok')
 
     // 配置文件底部弹层 + http 剪贴板兜底
     // 重新进页面：删除留下的提示条浮在顶部会挡住工具栏的坐标点击

@@ -21,6 +21,16 @@ type Admin struct {
 	Password string `json:"password"`
 }
 
+// DashAuth 远端 frps 管理接口（webServer / dashboard）的凭据；端口就是上面的 ManagePort。
+// 与 Admin 不是一回事：Admin 是 frpc 在本机开的管理端口，这里是远端 frps 的。
+// 填了它，远程端口占用才能拿 frps 的权威答案，而不是靠「能不能连上」猜。
+type DashAuth struct {
+	// 对应 frps.toml 的 webServer.user / webServer.password（旧版 ini 是 dashboard_user / dashboard_pwd）。
+	// frps 的 dashboard 只认 HTTP Basic；两者都留空时 frps 匿名放行，这里也就不带凭据。
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
 type Runtime struct {
 	Status        string `json:"status"`
 	PID           int    `json:"pid"`
@@ -46,6 +56,7 @@ type Instance struct {
 	Enabled     bool      `json:"enabled"`
 	Transport   Transport `json:"transport"`
 	AdminCfg    Admin     `json:"admin"`
+	Dashboard   DashAuth  `json:"dashboard"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
 	Runtime     *Runtime  `json:"runtime,omitempty"`
